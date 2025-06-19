@@ -33,22 +33,27 @@ validate_keys()
 # --- UI-Einstellungen ---
 st.set_page_config(layout="centered", page_title="Koifox-Bot", page_icon="🦊")
 st.title("🦊 Koifox-Bot")
-st.markdown("*Pragmatische Version - Balance zwischen Genauigkeit und Funktionalität*")
+st.markdown("*Debug Version - Checking OCR Source*")
 
 # --- Gemini Flash Konfiguration ---
 genai.configure(api_key=st.secrets["gemini_key"])
 vision_model = genai.GenerativeModel("gemini-1.5-flash")
 
-# --- OCR Standard ---
+# Zeige welches Modell für OCR verwendet wird
+st.sidebar.info(f"🔍 OCR Model: Gemini 1.5 Flash")
+
+# --- OCR mit Gemini (EXPLIZIT) ---
 @st.cache_data(ttl=3600)
 def extract_text_with_gemini(_image, file_hash):
-    """Extrahiert Text aus Bild"""
+    """Extrahiert Text aus Bild MIT GEMINI"""
     try:
-        logger.info(f"Starting OCR for file hash: {file_hash}")
+        st.sidebar.write("📸 Starting Gemini OCR...")
+        logger.info(f"Starting GEMINI OCR for file hash: {file_hash}")
         
+        # EXPLIZIT Gemini verwenden
         response = vision_model.generate_content(
             [
-                "Extract ALL text from this exam image EXACTLY as written. Include all question numbers, text, formulas, and answer options (A, B, C, D, E). Be precise with mathematical notation.",
+                "Extract ALL text from this exam image EXACTLY as written. Include all question numbers, text, formulas, and answer options (A, B, C, D, E). Do NOT interpret or solve.",
                 _image
             ],
             generation_config={
@@ -57,111 +62,61 @@ def extract_text_with_gemini(_image, file_hash):
             }
         )
         
-        logger.info("OCR completed successfully")
-        return response.text.strip()
+        ocr_result = response.text.strip()
+        
+        # Debug Info
+        st.sidebar.success(f"✅ Gemini OCR completed: {len(ocr_result)} chars")
+        logger.info(f"GEMINI OCR completed successfully: {len(ocr_result)} characters")
+        
+        return ocr_result
         
     except Exception as e:
         logger.error(f"Gemini OCR Error: {str(e)}")
+        st.sidebar.error("❌ Gemini OCR failed!")
         raise e
 
-# --- Claude Pragmatisch ---
-def solve_with_claude_pragmatic(ocr_text):
-    """Claude löst mit Balance zwischen Striktheit und Praktikabilität"""
+# --- Cache leeren Button ---
+if st.sidebar.button("🗑️ Clear OCR Cache"):
+    st.cache_data.clear()
+    st.sidebar.success("✅ Cache cleared!")
+    st.rerun()
+
+# --- Claude für Lösung ---
+def solve_with_claude(ocr_text):
+    """Claude löst basierend auf Gemini OCR"""
+    
+    st.sidebar.write("🧮 Starting Claude solver...")
     
     prompt = f"""Du bist ein Experte für "Internes Rechnungswesen (31031)" an der Fernuni Hagen.
 
-AUFGABENTEXT:
+AUFGABENTEXT (von Gemini OCR):
 {ocr_text}
 
 WICHTIGE REGELN:
 1. Bei Homogenität: Eine Funktion f(r₁,r₂) = (r₁^α + r₂^β)^γ ist NUR homogen wenn α = β
 2. Wenn nur "α + β = konstant" gegeben ist (ohne α = β), dann ist α ≠ β möglich → NICHT homogen
-3. Verwende primär die Informationen aus dem Text
-4. Nutze Standard-Definitionen aus dem Controlling wenn nötig
 
-ARBEITSSCHRITTE:
-1. Identifiziere was gegeben ist
-2. Identifiziere was gefragt ist  
-3. Wende die relevanten Konzepte an
-4. Berechne/bestimme die Antwort
-5. Prüfe dein Ergebnis
-
-FORMAT (WICHTIG):
-Aufgabe [Nr]: [Antwort - nur Buchstabe(n) oder Zahl]
-Begründung: [Präzise Erklärung auf Deutsch]
-
-Beispiel:
-Aufgabe 1: CD
-Begründung: Die Funktion ist nicht homogen (C richtig), da bei α + β = 3 nicht notwendig α = β gilt. D ist auch richtig, weil..."""
+FORMAT:
+Aufgabe [Nr]: [Antwort]
+Begründung: [Erklärung auf Deutsch]"""
 
     client = Anthropic(api_key=st.secrets["claude_key"])
     response = client.messages.create(
         model="claude-4-opus-20250514",
         max_tokens=2000,
-        temperature=0.1,  # Leicht erhöht für flexibleres Denken
-        system="Du bist ein Experte für deutsches Controlling. Sei präzise aber pragmatisch. Fokussiere dich auf die korrekte Lösung.",
+        temperature=0.1,
         messages=[{"role": "user", "content": prompt}]
     )
     
+    st.sidebar.success("✅ Claude solving completed")
     return response.content[0].text
 
-# --- Verbesserte Lösungsanzeige ---
-def display_solution(solution_text):
-    """Zeigt die Lösung strukturiert an"""
-    if not solution_text:
-        st.error("Keine Lösung generiert")
-        return
-        
-    lines = solution_text.split('\n')
-    current_task = None
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        # Aufgabe erkennen (verschiedene Formate)
-        if any(line.startswith(prefix) for prefix in ['Aufgabe', 'AUFGABE', 'Task']):
-            if ':' in line:
-                parts = line.split(':', 1)
-                task = parts[0].strip()
-                answer = parts[1].strip()
-                st.markdown(f"### {task}: **{answer}**")
-                current_task = task
-            else:
-                st.markdown(f"### {line}")
-                
-        # Begründung erkennen
-        elif any(line.startswith(prefix) for prefix in ['Begründung:', 'BEGRÜNDUNG:', 'Erklärung:']):
-            st.markdown(f"_{line}_")
-            
-        # Andere relevante Zeilen
-        elif current_task and line and not line.startswith('---'):
-            # Zusätzliche Erklärungen in kleiner Schrift
-            st.markdown(f"<small>{line}</small>", unsafe_allow_html=True)
-
-# --- Quick Validation ---
-def quick_validate(solution, ocr_text):
-    """Schnelle Validierung ohne zu strikt zu sein"""
-    # Prüfe nur ob Aufgabennummern übereinstimmen
-    import re
-    
-    ocr_tasks = set(re.findall(r'Aufgabe\s*(\d+)', ocr_text, re.IGNORECASE))
-    solution_tasks = set(re.findall(r'Aufgabe\s*(\d+)', solution, re.IGNORECASE))
-    
-    if ocr_tasks and solution_tasks:
-        if not ocr_tasks.intersection(solution_tasks):
-            return False, "Aufgabennummern stimmen nicht überein"
-    
-    return True, "OK"
-
 # --- UI ---
-# Optionen
-col1, col2 = st.columns(2)
-with col1:
-    debug_mode = st.checkbox("🔍 Debug-Modus", value=False)
-with col2:
-    strict_mode = st.checkbox("🔒 Strikter Modus", value=False, help="Strengere Validierung")
+# Debug Info
+with st.expander("🔧 System Info"):
+    st.write("**OCR System:** Google Gemini 1.5 Flash")
+    st.write("**Solver:** Claude 4 Opus")
+    st.write("**Cache Status:** Active (1 hour TTL)")
 
 # Datei-Upload
 uploaded_file = st.file_uploader(
@@ -172,56 +127,48 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
     try:
-        # Hash und Bild
+        # Hash
         file_bytes = uploaded_file.getvalue()
         file_hash = hashlib.md5(file_bytes).hexdigest()
+        st.sidebar.write(f"📄 File hash: {file_hash[:8]}...")
         
+        # Bild
         image = Image.open(uploaded_file)
         st.image(image, caption="Hochgeladene Klausuraufgabe", use_container_width=True)
         
-        # OCR
-        with st.spinner("📖 Lese Text..."):
+        # OCR mit GEMINI
+        with st.spinner("📖 OCR mit Gemini Flash..."):
             ocr_text = extract_text_with_gemini(image, file_hash)
-            
-        if debug_mode:
-            with st.expander("🔍 OCR-Ergebnis"):
-                st.code(ocr_text)
+        
+        # OCR Result anzeigen
+        with st.expander("🔍 OCR-Ergebnis (von GEMINI)", expanded=True):
+            st.code(ocr_text)
+            st.caption(f"Extracted by: Gemini 1.5 Flash | Length: {len(ocr_text)} characters")
         
         # Lösen
-        if st.button("🧮 Aufgaben lösen", type="primary"):
+        if st.button("🧮 Aufgaben lösen (mit CLAUDE)", type="primary"):
             st.markdown("---")
             
-            # Lösung generieren
-            with st.spinner("🧮 Claude löst die Aufgabe..."):
-                solution = solve_with_claude_pragmatic(ocr_text)
-            
-            if debug_mode:
-                with st.expander("💭 Rohe Lösung"):
-                    st.code(solution)
-            
-            # Quick Validation
-            valid, msg = quick_validate(solution, ocr_text)
-            if not valid and strict_mode:
-                st.warning(f"⚠️ Validierungswarnung: {msg}")
+            with st.spinner("🧮 Claude löst basierend auf Gemini OCR..."):
+                solution = solve_with_claude(ocr_text)
             
             # Lösung anzeigen
             st.markdown("### 📊 Lösung:")
-            display_solution(solution)
             
-            # Confidence Indicator
-            if solution:
-                if "nicht sicher" in solution.lower() or "unklar" in solution.lower():
-                    st.warning("⚠️ Claude ist sich bei dieser Lösung unsicher")
-                else:
-                    st.success("✅ Lösung generiert")
+            lines = solution.split('\n')
+            for line in lines:
+                if line.strip():
+                    if line.startswith('Aufgabe'):
+                        parts = line.split(':', 1)
+                        if len(parts) == 2:
+                            st.markdown(f"### {parts[0]}: **{parts[1].strip()}**")
+                    elif line.startswith('Begründung:'):
+                        st.markdown(f"_{line}_")
                     
     except Exception as e:
-        logger.error(f"General error: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         st.error(f"❌ Fehler: {str(e)}")
-        
-        if "credit balance" in str(e).lower():
-            st.error("💳 API-Credits aufgebraucht!")
 
 # --- Footer ---
 st.markdown("---")
-st.caption("Made by Fox | Pragmatic Balance Version")
+st.caption("OCR: Gemini 1.5 Flash | Solver: Claude 4 Opus")
