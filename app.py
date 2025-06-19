@@ -4,6 +4,7 @@ from PIL import Image
 import google.generativeai as genai
 import logging
 import hashlib
+import re
 
 # --- Logger Setup ---
 logging.basicConfig(level=logging.INFO)
@@ -33,137 +34,181 @@ validate_keys()
 # --- UI-Einstellungen ---
 st.set_page_config(layout="centered", page_title="Koifox-Bot", page_icon="🦊")
 st.title("🦊 Koifox-Bot")
-st.markdown("*Debug Version - Checking OCR Source*")
+st.markdown("*Verbesserte OCR Version*")
 
 # --- Gemini Flash Konfiguration ---
 genai.configure(api_key=st.secrets["gemini_key"])
 vision_model = genai.GenerativeModel("gemini-1.5-flash")
 
-# Zeige welches Modell für OCR verwendet wird
-st.sidebar.info(f"🔍 OCR Model: Gemini 1.5 Flash")
-
-# --- OCR mit Gemini (EXPLIZIT) ---
+# --- Verbesserte OCR ---
 @st.cache_data(ttl=3600)
-def extract_text_with_gemini(_image, file_hash):
-    """Extrahiert Text aus Bild MIT GEMINI"""
+def extract_text_with_gemini_improved(_image, file_hash):
+    """Extrahiert KOMPLETTEN Text aus Bild"""
     try:
-        st.sidebar.write("📸 Starting Gemini OCR...")
         logger.info(f"Starting GEMINI OCR for file hash: {file_hash}")
         
-        # EXPLIZIT Gemini verwenden
+        # Stelle sicher, dass das Bild nicht zu groß ist
+        # Aber behalte genug Auflösung für Text
+        max_size = 3000
+        if _image.width > max_size or _image.height > max_size:
+            _image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            st.sidebar.warning(f"Bild wurde auf {max_size}px skaliert")
+        
+        # Verbesserter OCR Prompt
         response = vision_model.generate_content(
             [
-                "Extract ALL text from this exam image EXACTLY as written. Include all question numbers, text, formulas, and answer options (A, B, C, D, E). Do NOT interpret or solve.",
+                """Extract ALL text from this exam image. 
+                IMPORTANT:
+                - Read EVERYTHING from top to bottom
+                - Include ALL questions, formulas, values, and answer options
+                - Include question numbers like "Aufgabe 45 (5 RP)"
+                - Include ALL multiple choice options (A, B, C, D, E) with their complete text
+                - Include mathematical symbols and formulas exactly as shown
+                - DO NOT summarize or skip any part
+                - DO NOT solve anything
+                
+                Start from the very top and continue to the very bottom of the image.""",
                 _image
             ],
             generation_config={
                 "temperature": 0,
-                "max_output_tokens": 4000
+                "max_output_tokens": 8000  # Erhöht!
             }
         )
         
         ocr_result = response.text.strip()
         
-        # Debug Info
-        st.sidebar.success(f"✅ Gemini OCR completed: {len(ocr_result)} chars")
-        logger.info(f"GEMINI OCR completed successfully: {len(ocr_result)} characters")
+        # Prüfe ob genug Text extrahiert wurde
+        if len(ocr_result) < 500:
+            st.warning(f"⚠️ Nur {len(ocr_result)} Zeichen extrahiert - möglicherweise unvollständig!")
         
+        logger.info(f"GEMINI OCR completed: {len(ocr_result)} characters")
         return ocr_result
         
     except Exception as e:
         logger.error(f"Gemini OCR Error: {str(e)}")
-        st.sidebar.error("❌ Gemini OCR failed!")
         raise e
 
-# --- Cache leeren Button ---
-if st.sidebar.button("🗑️ Clear OCR Cache"):
-    st.cache_data.clear()
-    st.sidebar.success("✅ Cache cleared!")
-    st.rerun()
-
-# --- Claude für Lösung ---
-def solve_with_claude(ocr_text):
-    """Claude löst basierend auf Gemini OCR"""
-    
-    st.sidebar.write("🧮 Starting Claude solver...")
+# --- Claude Solver mit besserer Ausgabe ---
+def solve_with_claude_formatted(ocr_text):
+    """Claude löst und formatiert korrekt"""
     
     prompt = f"""Du bist ein Experte für "Internes Rechnungswesen (31031)" an der Fernuni Hagen.
 
-AUFGABENTEXT (von Gemini OCR):
+VOLLSTÄNDIGER AUFGABENTEXT:
 {ocr_text}
 
 WICHTIGE REGELN:
-1. Bei Homogenität: Eine Funktion f(r₁,r₂) = (r₁^α + r₂^β)^γ ist NUR homogen wenn α = β
-2. Wenn nur "α + β = konstant" gegeben ist (ohne α = β), dann ist α ≠ β möglich → NICHT homogen
+1. Identifiziere ALLE Aufgaben im Text (z.B. "Aufgabe 45", "Aufgabe 46" etc.)
+2. Bei Homogenität: f(r₁,r₂) = (r₁^α + r₂^β)^γ ist NUR homogen wenn α = β
+3. Beantworte JEDE Aufgabe die du findest
 
-FORMAT:
-Aufgabe [Nr]: [Antwort]
-Begründung: [Erklärung auf Deutsch]"""
+AUSGABEFORMAT (STRIKT EINHALTEN):
+Aufgabe [Nummer]: [Antwort]
+Begründung: [Erklärung]
+
+Wiederhole dies für JEDE Aufgabe im Text.
+
+Beispiel:
+Aufgabe 45: 500
+Begründung: Der Parameter a entspricht dem Achsenabschnitt bei p = 0, also a = 500.
+
+Aufgabe 46: b
+Begründung: Um Parameter b zu bestimmen...
+
+WICHTIG: Vergiss keine Aufgabe!"""
 
     client = Anthropic(api_key=st.secrets["claude_key"])
     response = client.messages.create(
         model="claude-4-opus-20250514",
-        max_tokens=2000,
+        max_tokens=4000,
         temperature=0.1,
+        system="Beantworte ALLE Aufgaben die im Text stehen. Überspringe keine.",
         messages=[{"role": "user", "content": prompt}]
     )
     
-    st.sidebar.success("✅ Claude solving completed")
     return response.content[0].text
 
+# --- Verbesserte Ausgabeformatierung ---
+def parse_and_display_solution(solution_text):
+    """Parst und zeigt Lösung strukturiert an"""
+    
+    # Finde alle Aufgaben mit Regex
+    task_pattern = r'Aufgabe\s+(\d+)\s*:\s*([^\n]+)'
+    tasks = re.findall(task_pattern, solution_text, re.IGNORECASE)
+    
+    if not tasks:
+        st.warning("⚠️ Keine Aufgaben im erwarteten Format gefunden")
+        # Zeige trotzdem die Rohantwort
+        st.markdown(solution_text)
+        return
+    
+    # Zeige jede Aufgabe strukturiert
+    for task_num, answer in tasks:
+        st.markdown(f"### Aufgabe {task_num}: **{answer.strip()}**")
+        
+        # Finde zugehörige Begründung
+        begr_pattern = rf'Aufgabe\s+{task_num}\s*:.*?\n\s*Begründung:\s*([^\n]+(?:\n(?!Aufgabe)[^\n]+)*)'
+        begr_match = re.search(begr_pattern, solution_text, re.IGNORECASE | re.DOTALL)
+        
+        if begr_match:
+            st.markdown(f"*Begründung: {begr_match.group(1).strip()}*")
+        
+        st.markdown("---")
+
 # --- UI ---
-# Debug Info
-with st.expander("🔧 System Info"):
-    st.write("**OCR System:** Google Gemini 1.5 Flash")
-    st.write("**Solver:** Claude 4 Opus")
-    st.write("**Cache Status:** Active (1 hour TTL)")
+# Cache leeren
+if st.sidebar.button("🗑️ Clear Cache"):
+    st.cache_data.clear()
+    st.rerun()
+
+# Debug
+debug_mode = st.checkbox("🔍 Debug-Modus", value=True)
 
 # Datei-Upload
 uploaded_file = st.file_uploader(
     "**Klausuraufgabe hochladen...**",
-    type=["png", "jpg", "jpeg"],
-    key="file_uploader"
+    type=["png", "jpg", "jpeg"]
 )
 
 if uploaded_file is not None:
     try:
-        # Hash
-        file_bytes = uploaded_file.getvalue()
-        file_hash = hashlib.md5(file_bytes).hexdigest()
-        st.sidebar.write(f"📄 File hash: {file_hash[:8]}...")
-        
-        # Bild
+        # Bild verarbeiten
+        file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
         image = Image.open(uploaded_file)
-        st.image(image, caption="Hochgeladene Klausuraufgabe", use_container_width=True)
         
-        # OCR mit GEMINI
-        with st.spinner("📖 OCR mit Gemini Flash..."):
-            ocr_text = extract_text_with_gemini(image, file_hash)
+        # Zeige Original
+        st.image(image, caption=f"Originalbild ({image.width}x{image.height}px)", use_container_width=True)
         
-        # OCR Result anzeigen
-        with st.expander("🔍 OCR-Ergebnis (von GEMINI)", expanded=True):
+        # OCR
+        with st.spinner("📖 Lese KOMPLETTEN Text mit Gemini..."):
+            ocr_text = extract_text_with_gemini_improved(image, file_hash)
+        
+        # OCR Ergebnis
+        with st.expander(f"🔍 OCR-Ergebnis ({len(ocr_text)} Zeichen)", expanded=debug_mode):
             st.code(ocr_text)
-            st.caption(f"Extracted by: Gemini 1.5 Flash | Length: {len(ocr_text)} characters")
+            
+            # Prüfe ob Aufgaben gefunden wurden
+            found_tasks = re.findall(r'Aufgabe\s+\d+', ocr_text, re.IGNORECASE)
+            if found_tasks:
+                st.success(f"✅ Gefundene Aufgaben: {', '.join(found_tasks)}")
+            else:
+                st.error("❌ Keine Aufgaben im Text gefunden!")
         
         # Lösen
-        if st.button("🧮 Aufgaben lösen (mit CLAUDE)", type="primary"):
+        if st.button("🧮 Alle Aufgaben lösen", type="primary"):
             st.markdown("---")
             
-            with st.spinner("🧮 Claude löst basierend auf Gemini OCR..."):
-                solution = solve_with_claude(ocr_text)
+            with st.spinner("🧮 Claude löst ALLE Aufgaben..."):
+                solution = solve_with_claude_formatted(ocr_text)
             
-            # Lösung anzeigen
-            st.markdown("### 📊 Lösung:")
+            if debug_mode:
+                with st.expander("💭 Rohe Claude-Antwort"):
+                    st.code(solution)
             
-            lines = solution.split('\n')
-            for line in lines:
-                if line.strip():
-                    if line.startswith('Aufgabe'):
-                        parts = line.split(':', 1)
-                        if len(parts) == 2:
-                            st.markdown(f"### {parts[0]}: **{parts[1].strip()}**")
-                    elif line.startswith('Begründung:'):
-                        st.markdown(f"_{line}_")
+            # Formatierte Ausgabe
+            st.markdown("### 📊 Lösungen:")
+            parse_and_display_solution(solution)
                     
     except Exception as e:
         logger.error(f"Error: {str(e)}")
@@ -171,4 +216,4 @@ if uploaded_file is not None:
 
 # --- Footer ---
 st.markdown("---")
-st.caption("OCR: Gemini 1.5 Flash | Solver: Claude 4 Opus")
+st.caption("Koifox-Bot | Verbesserte OCR & Formatierung")
