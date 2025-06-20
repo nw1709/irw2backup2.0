@@ -37,7 +37,7 @@ validate_keys()
 # --- UI-Einstellungen ---
 st.set_page_config(layout="centered", page_title="3.0", page_icon="🦊")
 st.title("🦊 Koifox-Bot")
-st.markdown("*Flexibles OCR & generische Lösungslogik für Internes Rechnungswesen*")
+st.markdown("*Made with coffee, deep minimal and tiny gummy bears*")
 
 # --- Gemini Flash Konfiguration ---
 genai.configure(api_key=st.secrets["gemini_key"])
@@ -316,10 +316,10 @@ if uploaded_file is not None:
         
         st.image(image, caption=f"Originalbild ({image.width}x{image.height}px)", use_container_width=True)
         
-        with st.spinner("📖 Lese KOMPLETTEN Text mit Gemini..."):
+        with st.spinner("Lese Aufgabe mit Gemini..."):
             ocr_text = extract_text_with_gemini_improved(image, file_hash)
         
-        with st.expander(f"🔍 OCR-Ergebnis ({len(ocr_text)} Zeichen)", expanded=debug_mode):
+        with st.expander(f"OCR-Ergebnis ({len(ocr_text)} Zeichen)", expanded=debug_mode):
             st.code(ocr_text)
             
             found_tasks = re.findall(r'Aufgabe\s+\d+', ocr_text, re.IGNORECASE)
@@ -335,23 +335,23 @@ if uploaded_file is not None:
             if found_data:
                 st.success(f"✅ Erkannte Daten: {', '.join(found_data)}")
         
-        if st.button("🧮 Alle Aufgaben lösen", type="primary"):
+        if st.button("Aufgabe lösen", type="primary"):
             st.markdown("---")
             
-            with st.spinner("🧮 Claude und GPT-4 lösen ALLE Aufgaben..."):
+            with st.spinner("🧮 Claude & GPT-4 lösen Aufgabe..."):
                 claude_solution = solve_with_claude_formatted(ocr_text)
                 gpt_solution = solve_with_gpt(ocr_text)
                 
                 is_similar, claude_answers, gpt_answers, numerical_differences = are_answers_similar(claude_solution, gpt_solution)
                 if is_similar:
                     st.success("✅ Beide Modelle sind einig!")
-                    st.markdown("### 📊 Lösungen (Claude):")
+                    st.markdown("### Lösungen (Claude):")
                     parse_and_display_solution(claude_solution, model_name="Claude")
                 else:
                     st.warning("⚠️ Modelle uneinig! Zeige beide Lösungen zur Überprüfung.")
-                    st.markdown("### 📊 Lösungen (Claude):")
+                    st.markdown("### Lösungen (Claude):")
                     parse_and_display_solution(claude_solution, model_name="Claude")
-                    st.markdown("### 📊 Lösungen (GPT-4 Turbo):")
+                    st.markdown("### Lösungen (GPT-4 Turbo):")
                     parse_and_display_solution(gpt_solution, model_name="GPT-4 Turbo")
                     if numerical_differences:
                         st.markdown("### Numerische Unterschiede in Endantworten:")
@@ -369,4 +369,4 @@ if uploaded_file is not None:
         st.error(f"❌ Fehler: {str(e)}")
 
 st.markdown("---")
-st.caption("Koifox-Bot | Flexibles OCR & generische Lösungslogik für Internes Rechnungswesen")
+st.caption("Made by Fox with Gemini Flash 1.5, Claude Opus 4, GPT-4 & sponsored with I love you Token™️ by Big Koi-9 ❤️")
