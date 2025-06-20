@@ -35,7 +35,7 @@ def validate_keys():
 validate_keys()
 
 # --- UI-Einstellungen ---
-st.set_page_config(layout="centered", page_title="Koifox-Bot", page_icon="🦊")
+st.set_page_config(layout="centered", page_title="3.0", page_icon="🦊")
 st.title("🦊 Koifox-Bot")
 st.markdown("*Flexibles OCR & generische Lösungslogik für Internes Rechnungswesen*")
 
@@ -314,7 +314,7 @@ if uploaded_file is not None:
         file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
         image = Image.open(uploaded_file)
         
-        st.image(image, caption=f"Originalbild ({image.width}x{image.height}px)", use_column_width=True)
+        st.image(image, caption=f"Originalbild ({image.width}x{image.height}px)", use_container_width=True)
         
         with st.spinner("📖 Lese KOMPLETTEN Text mit Gemini..."):
             ocr_text = extract_text_with_gemini_improved(image, file_hash)
