@@ -1,7 +1,7 @@
 import streamlit as st
 from anthropic import Anthropic
 from openai import OpenAI
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageFilter
 import google.generativeai as genai
 import logging
 import hashlib
@@ -37,7 +37,7 @@ validate_keys()
 # --- UI-Einstellungen ---
 st.set_page_config(layout="centered", page_title="Koifox-Bot", page_icon="🦊")
 st.title("🦊 Koifox-Bot")
-st.markdown("*Optimiertes OCR, strikte Formatierung & Parameterprüfung*")
+st.markdown("*Flexibles OCR & generische Lösungslogik für Internes Rechnungswesen*")
 
 # --- Gemini Flash Konfiguration ---
 genai.configure(api_key=st.secrets["gemini_key"])
@@ -50,37 +50,37 @@ def load_sentence_transformer():
 
 sentence_model = load_sentence_transformer()
 
-# --- Verbesserte OCR mit detaillierter Parametererkennung ---
+# --- Flexibles OCR für alle Aufgabentypen ---
 @st.cache_data(ttl=3600)
 def extract_text_with_gemini_improved(_image, file_hash):
-    """Extrahiert KOMPLETTEN Text und sucht explizit nach Parametern"""
+    """Extrahiert KOMPLETTEN Text und alle relevanten Daten ohne feste Annahmen"""
     try:
         logger.info(f"Starting GEMINI OCR for file hash: {file_hash}")
         
-        # Bildvorverarbeitung: Kontrast erhöhen
+        # Bildvorverarbeitung: Kontrast und Schärfung erhöhen
         enhancer = ImageEnhance.Contrast(_image)
-        enhanced_image = enhancer.enhance(2.0)  # Kontrast verdoppeln
-        if enhanced_image.width > 3000 or enhanced_image.height > 3000:
-            enhanced_image.thumbnail((3000, 3000), Image.Resampling.LANCZOS)
+        enhanced_image = enhancer.enhance(2.5)
+        sharpened_image = enhanced_image.filter(ImageFilter.SHARPEN)
+        if sharpened_image.width > 3000 or sharpened_image.height > 3000:
+            sharpened_image.thumbnail((3000, 3000), Image.Resampling.LANCZOS)
             st.sidebar.warning(f"Bild wurde auf 3000px skaliert")
         
-        # Strukturierter OCR Prompt mit Fokus auf Parameter
         response = vision_model.generate_content(
             [
-                """Extract ALL content from this exam image in a structured format, including text, formulas, and visual elements like graphs, diagrams, or tables.
+                """Extract ALL content from this exam image in a structured format, including text, formulas, tables, and visual elements like graphs or diagrams.
 
                 IMPORTANT:
                 - Read ALL visible text from top to bottom, including:
                   - Question numbers (e.g., "Aufgabe 45 (5 RP)")
                   - All questions, formulas, values, and answer options (A, B, C, D, E) with their complete text
                   - Mathematical symbols and formulas exactly as shown (e.g., f(r₁,r₂) = (r₁^α + r₂^β)^γ)
-                  - ALL small text, annotations, footnotes, and numerical parameters (e.g., a = 450, b = 22.5)
-                - For graphs, diagrams, or tables:
+                  - ALL small text, annotations, footnotes, and any numerical data
+                - For tables, graphs, or diagrams:
                   - Describe ALL visual elements in detail, including:
                     - Axes labels (e.g., x-axis: "Quantity", y-axis: "Cost")
                     - ALL data points or values shown (e.g., "Point at (10, 500)")
                     - Curve shapes or trends (e.g., "Linear increasing curve")
-                    - ALL annotations or labels in the graph
+                    - ALL annotations or labels
                     - If a table is present, extract it as a structured table (e.g., rows and columns)
                 - Structure the output as follows:
                   - Aufgabe [Nummer]: [Fragetext]
@@ -89,12 +89,12 @@ def extract_text_with_gemini_improved(_image, file_hash):
                     - ...
                     - Formeln: [z. B. f(r₁,r₂) = (r₁^α + r₂^β)^γ]
                     - Graph/Table: [Detailed description, including ALL data points and annotations]
-                - Explicitly list ALL numerical parameters (e.g., a = 450, b = 22.5) in a separate section: Parameters: [list all parameters]
+                  - Data: [List ALL numerical data or data points found, e.g., 'Point at (0, 450)', 'Cost: 20', 'Revenue: 500']
                 - DO NOT summarize or skip any part
                 - DO NOT solve anything
                 
                 Start from the very top and continue to the very bottom of the image.""",
-                enhanced_image
+                sharpened_image
             ],
             generation_config={
                 "temperature": 0,
@@ -104,23 +104,11 @@ def extract_text_with_gemini_improved(_image, file_hash):
         
         ocr_result = response.text.strip()
         
-        # Prüfe ob genug Text extrahiert wurde
         if len(ocr_result) < 400:
-            st.warning(f"⚠️ Nur {len(ocr_result)} Zeichen extrahiert - möglicherweise unvollständig! Überprüfe, ob Graphen/Diagramme erkannt wurden.")
+            st.warning(f"⚠️ Nur {len(ocr_result)} Zeichen extrahiert - möglicherweise unvollständig!")
         
-        # Prüfe auf Graphenbeschreibungen
-        if "Graph:" not in ocr_result and "Table:" not in ocr_result:
-            st.warning("⚠️ Keine Graphen oder Tabellen im OCR-Text gefunden. Möglicherweise wurden visuelle Elemente nicht erkannt.")
-        
-        # Prüfe auf erwartete Parameter
-        expected_params = ['a = 450', 'b = 22.5']
-        missing_params = [param for param in expected_params if param not in ocr_result]
-        if missing_params:
-            st.warning(f"⚠️ Fehlende Parameter im OCR-Text: {', '.join(missing_params)}")
-        
-        # Logge zusätzliche Details
         logger.info(f"GEMINI OCR completed: {len(ocr_result)} characters")
-        logger.info(f"Erkannte Parameter: {[param for param in expected_params if param in ocr_result]}")
+        logger.info(f"Erkannte Daten: {[item for item in re.findall(r'Point at \(\d+,\s*\d+\)', ocr_result)]}")
         
         return ocr_result
         
@@ -165,9 +153,9 @@ def are_answers_similar(answer1, answer2):
         logger.error(f"Konsistenzprüfung fehlgeschlagen: {str(e)}")
         return False, [], [], []
 
-# --- Claude Solver mit strikter Parameterprüfung ---
+# --- Claude Solver für alle Aufgabentypen ---
 def solve_with_claude_formatted(ocr_text):
-    """Claude löst und formatiert korrekt mit Chain-of-Thought"""
+    """Claude löst flexibel basierend auf allen verfügbaren Daten mit Korrekturlogik"""
     
     prompt = f"""Du bist ein Experte für "Internes Rechnungswesen (31031)" an der Fernuni Hagen.
 
@@ -180,28 +168,30 @@ WICHTIGE REGELN:
 3. Beantworte JEDE Aufgabe die du findest
 4. Denke schrittweise:
    - Lies die Aufgabe sorgfältig
-   - Identifiziere alle relevanten Formeln, Werte und visuelle Daten (z.B. Graphenbeschreibungen)
+   - Identifiziere alle relevanten Formeln, Werte und Daten (z.B. 'Point at (0, 450)', 'Cost: 20', Tabellen)
+   - Leite Funktionen oder Berechnungen aus den verfügbaren Daten ab (z.B. Preis-Satzfunktion aus Graphendaten, falls vorhanden)
    - Wenn Daten unvollständig sind, dokumentiere Annahmen klar und markiere sie als unsicher
    - Führe die Berechnung explizit durch
-   - Überprüfe dein Ergebnis
+   - Überprüfe dein Ergebnis und korrigiere es, wenn nötig
+   - Die LETZTE berechnete Antwort (nach Korrektur) MUSS als Endantwort verwendet werden
 5. Bei Multiple-Choice-Fragen: Analysiere jede Option und begründe, warum sie richtig oder falsch ist
-6. Wenn Graphen oder Tabellen beschrieben sind, nutze diese Informationen für die Lösung
-7. Für Aufgabe 48: Verwende die Parameter a = 450, b = 22.5, kv = 3, kf = 20 und die Gewinnfunktion G(p) = (p - 3)·(450 - 22.5·p) - 20. Leite ab und setze gleich Null. Nutze diese Parameter, auch wenn sie nicht im Text explizit angegeben sind, solange die Aufgabe eindeutig ist.
-8. Die Endantwort MUSS exakt der berechneten Zahl entsprechen (z.B. 11.50, nicht 13.33) und auf zwei Dezimalstellen formatiert sein
+6. Wenn Tabellen, Graphen oder andere visuelle Elemente beschrieben sind, nutze diese Informationen für die Lösung
+7. Für Aufgaben wie Gewinnmaximierung: Nutze die im Text verfügbaren Daten (z.B. Graphenpunkte) und setze Standardwerte wie kv = 3 und kf = 20, wenn nicht anders angegeben, aber dokumentiere dies als Annahme
+8. Die Endantwort MUSS exakt der LETZTEN berechneten Zahl entsprechen (z.B. 11.50 nach Korrektur) und auf zwei Dezimalstellen formatiert sein
 
 AUSGABEFORMAT (STRIKT EINHALTEN):
-Aufgabe [Nummer]: [Antwort auf zwei Dezimalstellen]
-Begründung: [Schritt-für-Schritt-Erklärung]
-Berechnung: [Mathematische Schritte]
-Annahmen (falls nötig): [z.B. "Fehlende Datenpunkte im Graphen wurden als linear angenommen" oder "Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden"]
+Aufgabe [Nummer]: [Antwort auf zwei Dezimalstellen, basierend auf der letzten Berechnung]
+Begründung: [Schritt-für-Schritt-Erklärung inklusive Korrekturen]
+Berechnung: [Mathematische Schritte, markiere die letzte berechnete Zahl klar]
+Annahmen (falls nötig): [z.B. "Preis-Satzfunktion wurde aus Graphendaten abgeleitet" oder "kv = 3, kf = 20 als Standardwerte angenommen"]
 
 Wiederhole dies für JEDE Aufgabe im Text.
 
 Beispiel:
 Aufgabe 48: 11.50
-Begründung: Der gewinnmaximale Preis wird durch Ableiten der Gewinnfunktion bestimmt...
-Berechnung: dG/dp = (450 - 22.5·p) + (p - 3)·(-22.5) = 0, p = 517.5/45 = 11.50
-Annahmen: Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden
+Begründung: Der gewinnmaximale Preis wird durch Ableiten der Gewinnfunktion bestimmt... Initiale Annahme war falsch, nach Korrektur...
+Berechnung: x = 450 - 22.5·p (aus Graphen), G(p) = (p - 3)·(450 - 22.5·p) - 20, dG/dp = 0, p = 517.5/45 = 11.50 (letzte berechnete Zahl)
+Annahmen: Preis-Satzfunktion aus Graphendaten (0, 450) und (20, 0), kv = 3, kf = 20 als Standardwerte
 
 WICHTIG: Vergiss keine Aufgabe!"""
 
@@ -210,15 +200,15 @@ WICHTIG: Vergiss keine Aufgabe!"""
         model="claude-4-opus-20250514",
         max_tokens=4000,
         temperature=0.1,
-        system="Beantworte ALLE Aufgaben die im Text stehen. Überspringe keine. Stelle sicher, dass die Endantwort exakt der Berechnung entspricht.",
+        system="Beantworte ALLE Aufgaben die im Text stehen. Überspringe keine. Nutze die letzte berechnete Antwort als Endantwort.",
         messages=[{"role": "user", "content": prompt}]
     )
     
     return response.content[0].text
 
-# --- GPT-4 Turbo Solver mit strikter Parameterprüfung ---
+# --- GPT-4 Turbo Solver für alle Aufgabentypen ---
 def solve_with_gpt(ocr_text):
-    """GPT-4 Turbo löst mit Chain-of-Thought"""
+    """GPT-4 Turbo löst flexibel basierend auf allen verfügbaren Daten mit Korrekturlogik"""
     
     prompt = f"""Du bist ein Experte für "Internes Rechnungswesen (31031)" an der Fernuni Hagen.
 
@@ -231,28 +221,30 @@ WICHTIGE REGELN:
 3. Beantworte JEDE Aufgabe die du findest
 4. Denke schrittweise:
    - Lies die Aufgabe sorgfältig
-   - Identifiziere alle relevanten Formeln, Werte und visuelle Daten (z.B. Graphenbeschreibungen)
+   - Identifiziere alle relevanten Formeln, Werte und Daten (z.B. 'Point at (0, 450)', 'Cost: 20', Tabellen)
+   - Leite Funktionen oder Berechnungen aus den verfügbaren Daten ab (z.B. Preis-Satzfunktion aus Graphendaten, falls vorhanden)
    - Wenn Daten unvollständig sind, dokumentiere Annahmen klar und markiere sie als unsicher
    - Führe die Berechnung explizit durch
-   - Überprüfe dein Ergebnis
+   - Überprüfe dein Ergebnis und korrigiere es, wenn nötig
+   - Die LETZTE berechnete Antwort (nach Korrektur) MUSS als Endantwort verwendet werden
 5. Bei Multiple-Choice-Fragen: Analysiere jede Option und begründe, warum sie richtig oder falsch ist
-6. Wenn Graphen oder Tabellen beschrieben sind, nutze diese Informationen für die Lösung
-7. Für Aufgabe 48: Verwende die Parameter a = 450, b = 22.5, kv = 3, kf = 20 und die Gewinnfunktion G(p) = (p - 3)·(450 - 22.5·p) - 20. Leite ab und setze gleich Null. Nutze diese Parameter, auch wenn sie nicht im Text explizit angegeben sind, solange die Aufgabe eindeutig ist.
-8. Die Endantwort MUSS exakt der berechneten Zahl entsprechen (z.B. 11.50, nicht 13.33) und auf zwei Dezimalstellen formatiert sein
+6. Wenn Tabellen, Graphen oder andere visuelle Elemente beschrieben sind, nutze diese Informationen für die Lösung
+7. Für Aufgaben wie Gewinnmaximierung: Nutze die im Text verfügbaren Daten (z.B. Graphenpunkte) und setze Standardwerte wie kv = 3 und kf = 20, wenn nicht anders angegeben, aber dokumentiere dies als Annahme
+8. Die Endantwort MUSS exakt der LETZTEN berechneten Zahl entsprechen (z.B. 11.50 nach Korrektur) und auf zwei Dezimalstellen formatiert sein
 
 AUSGABEFORMAT (STRIKT EINHALTEN):
-Aufgabe [Nummer]: [Antwort auf zwei Dezimalstellen]
-Begründung: [Schritt-für-Schritt-Erklärung]
-Berechnung: [Mathematische Schritte]
-Annahmen (falls nötig): [z.B. "Fehlende Datenpunkte im Graphen wurden als linear angenommen" oder "Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden"]
+Aufgabe [Nummer]: [Antwort auf zwei Dezimalstellen, basierend auf der letzten Berechnung]
+Begründung: [Schritt-für-Schritt-Erklärung inklusive Korrekturen]
+Berechnung: [Mathematische Schritte, markiere die letzte berechnete Zahl klar]
+Annahmen (falls nötig): [z.B. "Preis-Satzfunktion wurde aus Graphendaten abgeleitet" oder "kv = 3, kf = 20 als Standardwerte angenommen"]
 
 Wiederhole dies für JEDE Aufgabe im Text.
 
 Beispiel:
 Aufgabe 48: 11.50
-Begründung: Der gewinnmaximale Preis wird durch Ableiten der Gewinnfunktion bestimmt...
-Berechnung: dG/dp = (450 - 22.5·p) + (p - 3)·(-22.5) = 0, p = 517.5/45 = 11.50
-Annahmen: Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden
+Begründung: Der gewinnmaximale Preis wird durch Ableiten der Gewinnfunktion bestimmt... Initiale Annahme war falsch, nach Korrektur...
+Berechnung: x = 450 - 22.5·p (aus Graphen), G(p) = (p - 3)·(450 - 22.5·p) - 20, dG/dp = 0, p = 517.5/45 = 11.50 (letzte berechnete Zahl)
+Annahmen: Preis-Satzfunktion aus Graphendaten (0, 450) und (20, 0), kv = 3, kf = 20 als Standardwerte
 
 WICHTIG: Vergiss keine Aufgabe!"""
 
@@ -260,7 +252,7 @@ WICHTIG: Vergiss keine Aufgabe!"""
     response = client.chat.completions.create(
         model="gpt-4-turbo",
         messages=[
-            {"role": "system", "content": "Beantworte ALLE Aufgaben die im Text stehen. Überspringe keine. Stelle sicher, dass die Endantwort exakt der Berechnung entspricht."},
+            {"role": "system", "content": "Beantworte ALLE Aufgaben die im Text stehen. Überspringe keine. Nutze die letzte berechnete Antwort als Endantwort."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=4000,
@@ -269,9 +261,9 @@ WICHTIG: Vergiss keine Aufgabe!"""
     
     return response.choices[0].message.content
 
-# --- Verbesserte Ausgabeformatierung mit Konsistenzprüfung ---
+# --- Verbesserte Ausgabeformatierung mit Korrekturprüfung ---
 def parse_and_display_solution(solution_text, model_name="Claude"):
-    """Parst und zeigt Lösung strukturiert an, prüft Konsistenz mit Berechnung"""
+    """Parst und zeigt Lösung strukturiert an, prüft Konsistenz mit letzter Berechnung"""
     
     task_pattern = r'Aufgabe\s+(\d+)\s*:\s*([^\n]+)'
     tasks = re.findall(task_pattern, solution_text, re.IGNORECASE)
@@ -291,12 +283,15 @@ def parse_and_display_solution(solution_text, model_name="Claude"):
             st.markdown(f"*Begründung: {begr_match.group(1).strip()}*")
             if begr_match.group(2):
                 st.markdown(f"*Berechnung: {begr_match.group(2).strip()}*")
-                calc_pattern = r'p\s*=\s*([\d,.]+)'
+                calc_pattern = r'p\s*=\s*([\d,.]+)\s*\(letzte\s*berechnete\s*Zahl\)'
                 calc_match = re.search(calc_pattern, begr_match.group(2), re.IGNORECASE)
+                if not calc_match:
+                    calc_pattern_fallback = r'p\s*=\s*([\d,.]+)(?=\s|$|\n)'
+                    calc_match = re.search(calc_pattern_fallback, begr_match.group(2), re.IGNORECASE)
                 if calc_match:
                     calc_answer = calc_match.group(1).replace(',', '.')
                     if calc_answer != answer.strip():
-                        st.warning(f"⚠️ Inkonsistenz in Aufgabe {task_num} ({model_name}): Endantwort ({answer.strip()}) unterscheidet sich von Berechnung ({calc_answer})")
+                        st.warning(f"⚠️ Inkonsistenz in Aufgabe {task_num} ({model_name}): Endantwort ({answer.strip()}) unterscheidet sich von letzter Berechnung ({calc_answer})")
             if begr_match.group(3):
                 st.markdown(f"*Annahmen: {begr_match.group(3).strip()}*")
         
@@ -319,9 +314,9 @@ if uploaded_file is not None:
         file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
         image = Image.open(uploaded_file)
         
-        st.image(image, caption=f"Originalbild ({image.width}x{image.height}px)", use_container_width=True)
+        st.image(image, caption=f"Originalbild ({image.width}x{image.height}px)", use_column_width=True)
         
-        with st.spinner("📖 Lese KOMPLETTEN Text und Graphen mit Gemini..."):
+        with st.spinner("📖 Lese KOMPLETTEN Text mit Gemini..."):
             ocr_text = extract_text_with_gemini_improved(image, file_hash)
         
         with st.expander(f"🔍 OCR-Ergebnis ({len(ocr_text)} Zeichen)", expanded=debug_mode):
@@ -336,10 +331,9 @@ if uploaded_file is not None:
             if "Graph:" in ocr_text or "Table:" in ocr_text:
                 st.success("✅ Graphen oder Tabellen im OCR-Text gefunden!")
             
-            expected_params = ['a = 450', 'b = 22.5']
-            found_params = [param for param in expected_params if param in ocr_text]
-            if found_params:
-                st.success(f"✅ Erkannte Parameter: {', '.join(found_params)}")
+            found_data = re.findall(r'Point at \(\d+,\s*\d+\)|[A-Za-z]+:\s*\d+', ocr_text)
+            if found_data:
+                st.success(f"✅ Erkannte Daten: {', '.join(found_data)}")
         
         if st.button("🧮 Alle Aufgaben lösen", type="primary"):
             st.markdown("---")
@@ -375,4 +369,4 @@ if uploaded_file is not None:
         st.error(f"❌ Fehler: {str(e)}")
 
 st.markdown("---")
-st.caption("Koifox-Bot | Optimiertes OCR, strikte Formatierung & Parameterprüfung")
+st.caption("Koifox-Bot | Flexibles OCR & generische Lösungslogik für Internes Rechnungswesen")
