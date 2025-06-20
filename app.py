@@ -369,4 +369,4 @@ if uploaded_file is not None:
         st.error(f"❌ Fehler: {str(e)}")
 
 st.markdown("---")
-st.caption("Made by Fox with Gemini Flash 1.5, Claude Opus 4, GPT-4 & sponsored with I love you Token™️ by Big Koi-9 ❤️")
+st.caption("Made by Fox with Gemini Flash 1.5, Claude Opus 4, GPT-4 & I love you Token™️ by Big Koi-9 ❤️")
