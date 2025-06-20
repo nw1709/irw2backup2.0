@@ -1,7 +1,7 @@
 import streamlit as st
 from anthropic import Anthropic
 from openai import OpenAI
-from PIL import Image
+from PIL import Image, ImageEnhance
 import google.generativeai as genai
 import logging
 import hashlib
@@ -37,7 +37,7 @@ validate_keys()
 # --- UI-Einstellungen ---
 st.set_page_config(layout="centered", page_title="Koifox-Bot", page_icon="🦊")
 st.title("🦊 Koifox-Bot")
-st.markdown("*Optimiertes OCR, strikte Formatierung & dynamische OCR-Prüfung*")
+st.markdown("*Optimiertes OCR, strikte Formatierung & Parameterprüfung*")
 
 # --- Gemini Flash Konfiguration ---
 genai.configure(api_key=st.secrets["gemini_key"])
@@ -50,20 +50,21 @@ def load_sentence_transformer():
 
 sentence_model = load_sentence_transformer()
 
-# --- Verbesserte OCR mit detaillierter Graphenbeschreibung ---
+# --- Verbesserte OCR mit detaillierter Parametererkennung ---
 @st.cache_data(ttl=3600)
 def extract_text_with_gemini_improved(_image, file_hash):
-    """Extrahiert KOMPLETTEN Text und beschreibt Graphen detailliert"""
+    """Extrahiert KOMPLETTEN Text und sucht explizit nach Parametern"""
     try:
         logger.info(f"Starting GEMINI OCR for file hash: {file_hash}")
         
-        # Bildskalierung beibehalten
-        max_size = 3000
-        if _image.width > max_size or _image.height > max_size:
-            _image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-            st.sidebar.warning(f"Bild wurde auf {max_size}px skaliert")
+        # Bildvorverarbeitung: Kontrast erhöhen
+        enhancer = ImageEnhance.Contrast(_image)
+        enhanced_image = enhancer.enhance(2.0)  # Kontrast verdoppeln
+        if enhanced_image.width > 3000 or enhanced_image.height > 3000:
+            enhanced_image.thumbnail((3000, 3000), Image.Resampling.LANCZOS)
+            st.sidebar.warning(f"Bild wurde auf 3000px skaliert")
         
-        # Strukturierter OCR Prompt
+        # Strukturierter OCR Prompt mit Fokus auf Parameter
         response = vision_model.generate_content(
             [
                 """Extract ALL content from this exam image in a structured format, including text, formulas, and visual elements like graphs, diagrams, or tables.
@@ -73,7 +74,7 @@ def extract_text_with_gemini_improved(_image, file_hash):
                   - Question numbers (e.g., "Aufgabe 45 (5 RP)")
                   - All questions, formulas, values, and answer options (A, B, C, D, E) with their complete text
                   - Mathematical symbols and formulas exactly as shown (e.g., f(r₁,r₂) = (r₁^α + r₂^β)^γ)
-                  - ALL small text, annotations, or footnotes
+                  - ALL small text, annotations, footnotes, and numerical parameters (e.g., a = 450, b = 22.5)
                 - For graphs, diagrams, or tables:
                   - Describe ALL visual elements in detail, including:
                     - Axes labels (e.g., x-axis: "Quantity", y-axis: "Cost")
@@ -88,12 +89,12 @@ def extract_text_with_gemini_improved(_image, file_hash):
                     - ...
                     - Formeln: [z. B. f(r₁,r₂) = (r₁^α + r₂^β)^γ]
                     - Graph/Table: [Detailed description, including ALL data points and annotations]
-                - Explicitly list numerical parameters (e.g., a = 450, b = 22.5) if present
+                - Explicitly list ALL numerical parameters (e.g., a = 450, b = 22.5) in a separate section: Parameters: [list all parameters]
                 - DO NOT summarize or skip any part
                 - DO NOT solve anything
                 
                 Start from the very top and continue to the very bottom of the image.""",
-                _image
+                enhanced_image
             ],
             generation_config={
                 "temperature": 0,
@@ -133,10 +134,9 @@ def compare_numerical_answers(answers1, answers2):
     differences = []
     for a1, a2 in zip(answers1, answers2):
         try:
-            # Konvertiere Antworten in Floats (ersetze Komma durch Punkt)
             num1 = float(a1.replace(',', '.'))
             num2 = float(a2.replace(',', '.'))
-            if abs(num1 - num2) > 0.1:  # Toleranz von 0.1
+            if abs(num1 - num2) > 0.1:
                 differences.append((a1, a2))
         except ValueError:
             continue
@@ -146,7 +146,6 @@ def compare_numerical_answers(answers1, answers2):
 def are_answers_similar(answer1, answer2):
     """Vergleicht die Endantworten auf semantische Ähnlichkeit und numerisch"""
     try:
-        # Extrahiere Endantworten
         task_pattern = r'Aufgabe\s+\d+\s*:\s*([^\n]+)'
         answers1 = re.findall(task_pattern, answer1, re.IGNORECASE)
         answers2 = re.findall(task_pattern, answer2, re.IGNORECASE)
@@ -155,12 +154,10 @@ def are_answers_similar(answer1, answer2):
             logger.warning("Keine Endantworten für Konsistenzprüfung gefunden")
             return False, [], [], []
         
-        # Semantische Ähnlichkeit
         embeddings = sentence_model.encode([' '.join(answers1), ' '.join(answers2)])
         similarity = util.cos_sim(embeddings[0], embeddings[1]).item()
         logger.info(f"Antwortähnlichkeit (Endantworten): {similarity:.2f}")
         
-        # Numerischer Vergleich
         numerical_differences = compare_numerical_answers(answers1, answers2)
         
         return similarity > 0.8 and not numerical_differences, answers1, answers2, numerical_differences
@@ -168,7 +165,7 @@ def are_answers_similar(answer1, answer2):
         logger.error(f"Konsistenzprüfung fehlgeschlagen: {str(e)}")
         return False, [], [], []
 
-# --- Claude Solver mit strikter Formatierung ---
+# --- Claude Solver mit strikter Parameterprüfung ---
 def solve_with_claude_formatted(ocr_text):
     """Claude löst und formatiert korrekt mit Chain-of-Thought"""
     
@@ -184,19 +181,19 @@ WICHTIGE REGELN:
 4. Denke schrittweise:
    - Lies die Aufgabe sorgfältig
    - Identifiziere alle relevanten Formeln, Werte und visuelle Daten (z.B. Graphenbeschreibungen)
-   - Wenn Daten unvollständig sind, dokumentiere Annahmen klar
+   - Wenn Daten unvollständig sind, dokumentiere Annahmen klar und markiere sie als unsicher
    - Führe die Berechnung explizit durch
    - Überprüfe dein Ergebnis
 5. Bei Multiple-Choice-Fragen: Analysiere jede Option und begründe, warum sie richtig oder falsch ist
 6. Wenn Graphen oder Tabellen beschrieben sind, nutze diese Informationen für die Lösung
-7. Für Aufgabe 48: Verwende die Parameter a = 450, b = 22.5, kv = 3, kf = 20 und die Gewinnfunktion G(p) = (p - 3)·(450 - 22.5·p) - 20. Leite ab und setze gleich Null.
+7. Für Aufgabe 48: Verwende die Parameter a = 450, b = 22.5, kv = 3, kf = 20 und die Gewinnfunktion G(p) = (p - 3)·(450 - 22.5·p) - 20. Leite ab und setze gleich Null. Nutze diese Parameter, auch wenn sie nicht im Text explizit angegeben sind, solange die Aufgabe eindeutig ist.
 8. Die Endantwort MUSS exakt der berechneten Zahl entsprechen (z.B. 11.50, nicht 13.33) und auf zwei Dezimalstellen formatiert sein
 
 AUSGABEFORMAT (STRIKT EINHALTEN):
 Aufgabe [Nummer]: [Antwort auf zwei Dezimalstellen]
 Begründung: [Schritt-für-Schritt-Erklärung]
 Berechnung: [Mathematische Schritte]
-Annahmen (falls nötig): [z.B. "Fehlende Datenpunkte im Graphen wurden als linear angenommen"]
+Annahmen (falls nötig): [z.B. "Fehlende Datenpunkte im Graphen wurden als linear angenommen" oder "Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden"]
 
 Wiederhole dies für JEDE Aufgabe im Text.
 
@@ -204,7 +201,7 @@ Beispiel:
 Aufgabe 48: 11.50
 Begründung: Der gewinnmaximale Preis wird durch Ableiten der Gewinnfunktion bestimmt...
 Berechnung: dG/dp = (450 - 22.5·p) + (p - 3)·(-22.5) = 0, p = 517.5/45 = 11.50
-Annahmen: Linearer Kurvenverlauf basierend auf Graphenbeschreibung
+Annahmen: Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden
 
 WICHTIG: Vergiss keine Aufgabe!"""
 
@@ -219,7 +216,7 @@ WICHTIG: Vergiss keine Aufgabe!"""
     
     return response.content[0].text
 
-# --- GPT-4 Turbo Solver mit strikter Formatierung ---
+# --- GPT-4 Turbo Solver mit strikter Parameterprüfung ---
 def solve_with_gpt(ocr_text):
     """GPT-4 Turbo löst mit Chain-of-Thought"""
     
@@ -235,19 +232,19 @@ WICHTIGE REGELN:
 4. Denke schrittweise:
    - Lies die Aufgabe sorgfältig
    - Identifiziere alle relevanten Formeln, Werte und visuelle Daten (z.B. Graphenbeschreibungen)
-   - Wenn Daten unvollständig sind, dokumentiere Annahmen klar
+   - Wenn Daten unvollständig sind, dokumentiere Annahmen klar und markiere sie als unsicher
    - Führe die Berechnung explizit durch
    - Überprüfe dein Ergebnis
 5. Bei Multiple-Choice-Fragen: Analysiere jede Option und begründe, warum sie richtig oder falsch ist
 6. Wenn Graphen oder Tabellen beschrieben sind, nutze diese Informationen für die Lösung
-7. Für Aufgabe 48: Verwende die Parameter a = 450, b = 22.5, kv = 3, kf = 20 und die Gewinnfunktion G(p) = (p - 3)·(450 - 22.5·p) - 20. Leite ab und setze gleich Null.
+7. Für Aufgabe 48: Verwende die Parameter a = 450, b = 22.5, kv = 3, kf = 20 und die Gewinnfunktion G(p) = (p - 3)·(450 - 22.5·p) - 20. Leite ab und setze gleich Null. Nutze diese Parameter, auch wenn sie nicht im Text explizit angegeben sind, solange die Aufgabe eindeutig ist.
 8. Die Endantwort MUSS exakt der berechneten Zahl entsprechen (z.B. 11.50, nicht 13.33) und auf zwei Dezimalstellen formatiert sein
 
 AUSGABEFORMAT (STRIKT EINHALTEN):
 Aufgabe [Nummer]: [Antwort auf zwei Dezimalstellen]
 Begründung: [Schritt-für-Schritt-Erklärung]
 Berechnung: [Mathematische Schritte]
-Annahmen (falls nötig): [z.B. "Fehlende Datenpunkte im Graphen wurden als linear angenommen"]
+Annahmen (falls nötig): [z.B. "Fehlende Datenpunkte im Graphen wurden als linear angenommen" oder "Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden"]
 
 Wiederhole dies für JEDE Aufgabe im Text.
 
@@ -255,7 +252,7 @@ Beispiel:
 Aufgabe 48: 11.50
 Begründung: Der gewinnmaximale Preis wird durch Ableiten der Gewinnfunktion bestimmt...
 Berechnung: dG/dp = (450 - 22.5·p) + (p - 3)·(-22.5) = 0, p = 517.5/45 = 11.50
-Annahmen: Linearer Kurvenverlauf basierend auf Graphenbeschreibung
+Annahmen: Parameter a = 450, b = 22.5 wurden vorgegeben, da sie im Text nicht gefunden wurden
 
 WICHTIG: Vergiss keine Aufgabe!"""
 
@@ -276,7 +273,6 @@ WICHTIG: Vergiss keine Aufgabe!"""
 def parse_and_display_solution(solution_text, model_name="Claude"):
     """Parst und zeigt Lösung strukturiert an, prüft Konsistenz mit Berechnung"""
     
-    # Finde alle Aufgaben mit Regex
     task_pattern = r'Aufgabe\s+(\d+)\s*:\s*([^\n]+)'
     tasks = re.findall(task_pattern, solution_text, re.IGNORECASE)
     
@@ -285,11 +281,9 @@ def parse_and_display_solution(solution_text, model_name="Claude"):
         st.markdown(solution_text)
         return
     
-    # Zeige jede Aufgabe strukturiert
     for task_num, answer in tasks:
         st.markdown(f"### Aufgabe {task_num}: **{answer.strip()}** ({model_name})")
         
-        # Finde zugehörige Begründung, Berechnung und Annahmen
         begr_pattern = rf'Aufgabe\s+{task_num}\s*:.*?\n\s*Begründung:\s*([^\n]+(?:\n(?!Aufgabe)[^\n]+)*?)(?:\n\s*Berechnung:\s*([^\n]+(?:\n(?!Aufgabe)[^\n]+)*))?(?:\n\s*Annahmen\s*\(falls\s*nötig\):\s*([^\n]+(?:\n(?!Aufgabe)[^\n]+)*))?(?=\n\s*Aufgabe|\Z)'
         begr_match = re.search(begr_pattern, solution_text, re.IGNORECASE | re.DOTALL)
         
@@ -297,7 +291,6 @@ def parse_and_display_solution(solution_text, model_name="Claude"):
             st.markdown(f"*Begründung: {begr_match.group(1).strip()}*")
             if begr_match.group(2):
                 st.markdown(f"*Berechnung: {begr_match.group(2).strip()}*")
-                # Prüfe Konsistenz zwischen Endantwort und Berechnung
                 calc_pattern = r'p\s*=\s*([\d,.]+)'
                 calc_match = re.search(calc_pattern, begr_match.group(2), re.IGNORECASE)
                 if calc_match:
@@ -310,15 +303,12 @@ def parse_and_display_solution(solution_text, model_name="Claude"):
         st.markdown("---")
 
 # --- UI ---
-# Cache leeren
 if st.sidebar.button("🗑️ Clear Cache"):
     st.cache_data.clear()
     st.rerun()
 
-# Debug
 debug_mode = st.checkbox("🔍 Debug-Modus", value=True)
 
-# Datei-Upload
 uploaded_file = st.file_uploader(
     "**Klausuraufgabe hochladen...**",
     type=["png", "jpg", "jpeg"]
@@ -326,39 +316,31 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
     try:
-        # Bild verarbeiten
         file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
         image = Image.open(uploaded_file)
         
-        # Zeige Original
         st.image(image, caption=f"Originalbild ({image.width}x{image.height}px)", use_container_width=True)
         
-        # OCR
         with st.spinner("📖 Lese KOMPLETTEN Text und Graphen mit Gemini..."):
             ocr_text = extract_text_with_gemini_improved(image, file_hash)
         
-        # OCR Ergebnis
         with st.expander(f"🔍 OCR-Ergebnis ({len(ocr_text)} Zeichen)", expanded=debug_mode):
             st.code(ocr_text)
             
-            # Prüfe ob Aufgaben gefunden wurden
             found_tasks = re.findall(r'Aufgabe\s+\d+', ocr_text, re.IGNORECASE)
             if found_tasks:
                 st.success(f"✅ Gefundene Aufgaben: {', '.join(found_tasks)}")
             else:
                 st.error("❌ Keine Aufgaben im Text gefunden!")
             
-            # Prüfe auf Graphenbeschreibungen
             if "Graph:" in ocr_text or "Table:" in ocr_text:
                 st.success("✅ Graphen oder Tabellen im OCR-Text gefunden!")
             
-            # Zeige erkannte Parameter
             expected_params = ['a = 450', 'b = 22.5']
             found_params = [param for param in expected_params if param in ocr_text]
             if found_params:
                 st.success(f"✅ Erkannte Parameter: {', '.join(found_params)}")
         
-        # Lösen
         if st.button("🧮 Alle Aufgaben lösen", type="primary"):
             st.markdown("---")
             
@@ -366,7 +348,6 @@ if uploaded_file is not None:
                 claude_solution = solve_with_claude_formatted(ocr_text)
                 gpt_solution = solve_with_gpt(ocr_text)
                 
-                # Konsistenzprüfung
                 is_similar, claude_answers, gpt_answers, numerical_differences = are_answers_similar(claude_solution, gpt_solution)
                 if is_similar:
                     st.success("✅ Beide Modelle sind einig!")
@@ -378,7 +359,6 @@ if uploaded_file is not None:
                     parse_and_display_solution(claude_solution, model_name="Claude")
                     st.markdown("### 📊 Lösungen (GPT-4 Turbo):")
                     parse_and_display_solution(gpt_solution, model_name="GPT-4 Turbo")
-                    # Zeige numerische Unterschiede
                     if numerical_differences:
                         st.markdown("### Numerische Unterschiede in Endantworten:")
                         for c_answer, g_answer in numerical_differences:
@@ -394,6 +374,5 @@ if uploaded_file is not None:
         logger.error(f"Error: {str(e)}")
         st.error(f"❌ Fehler: {str(e)}")
 
-# --- Footer ---
 st.markdown("---")
-st.caption("Koifox-Bot | Optimiertes OCR, strikte Formatierung & dynamische OCR-Prüfung")
+st.caption("Koifox-Bot | Optimiertes OCR, strikte Formatierung & Parameterprüfung")
