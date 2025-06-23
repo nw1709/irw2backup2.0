@@ -116,7 +116,7 @@ WICHTIG:
         logger.error(f"OCR Error: {str(e)}")
         raise e
 
-# --- FERNUNI-SPEZIFISCHE REGELN ---
+# --- KORRIGIERTE FERNUNI-SPEZIFISCHE REGELN ---
 FERNUNI_RULES = """
 FERNUNI HAGEN SPEZIFISCHE REGELN (STRIKT BEFOLGEN!):
 
@@ -125,9 +125,10 @@ FERNUNI HAGEN SPEZIFISCHE REGELN (STRIKT BEFOLGEN!):
    - Alle anderen sind derivative/unterstützende Funktionen
    
 2. HARRIS-FORMEL / EOQ:
-   - Nach Fernuni-Definition: Harris-Formel unterstellt KEINE (T,Q)-Politik
+   - Nach Fernuni-Definition: Harris-Formel unterstellt eine (s,Q)-Politik (nicht (T,Q)-Politik!)
    - Formel: Q* = √(2×D×K_B/k_L)
    - Lagerkosten IMMER auf Jahresbasis umrechnen
+   - Bei EOQ sind Lager- und Bestellkosten identisch (beide = 960€ im Beispiel)
    
 3. HOMOGENITÄT:
    - f(r₁,r₂) = (r₁^α + r₂^β)^γ ist NUR homogen wenn α = β
@@ -135,23 +136,56 @@ FERNUNI HAGEN SPEZIFISCHE REGELN (STRIKT BEFOLGEN!):
 4. MULTIPLE CHOICE:
    - Bei "(x aus 5)" können 0 bis 5 Antworten richtig sein
    - Antworte mit BUCHSTABEN (A,B,C,D,E), nicht mit Zahlen!
+   - PRÜFE JEDE OPTION EINZELN!
 """
 
-# --- VEREINFACHTE ANTWORTEXTRAKTION ---
-def extract_final_answers(solution_text):
-    """Extrahiert nur die finalen Antworten ohne komplexe Verarbeitung"""
-    answers = {}
+# --- VERBESSERTE ANTWORTEXTRAKTION ---
+def extract_structured_solution(solution_text):
+    """Extrahiert sowohl Antworten als auch Begründungen strukturiert"""
+    result = {}
+    
+    # Teile Text in Zeilen
     lines = solution_text.split('\n')
+    current_task = None
+    current_answer = None
+    current_reasoning = []
     
     for line in lines:
-        # Suche nach "Aufgabe X: BUCHSTABEN"
-        match = re.match(r'Aufgabe\s*(\d+)\s*:\s*([A-E]+)', line.strip(), re.IGNORECASE)
-        if match:
-            task_num = match.group(1)
-            letters = ''.join(sorted(c for c in match.group(2).upper() if c in 'ABCDE'))
-            answers[f"Aufgabe {task_num}"] = letters
+        line = line.strip()
+        
+        # Erkenne Aufgabe
+        task_match = re.match(r'Aufgabe\s*(\d+)\s*:\s*([A-E]+)', line, re.IGNORECASE)
+        if task_match:
+            # Speichere vorherige Aufgabe
+            if current_task and current_answer:
+                result[f"Aufgabe {current_task}"] = {
+                    'answer': current_answer,
+                    'reasoning': ' '.join(current_reasoning).strip()
+                }
+            
+            # Neue Aufgabe
+            current_task = task_match.group(1)
+            current_answer = ''.join(sorted(c for c in task_match.group(2).upper() if c in 'ABCDE'))
+            current_reasoning = []
+        
+        # Erkenne Begründung
+        elif line.startswith('Begründung:'):
+            reasoning_text = line.replace('Begründung:', '').strip()
+            if reasoning_text:
+                current_reasoning = [reasoning_text]
+        
+        # Fortsetzung der Begründung
+        elif current_task and line and not line.startswith('Aufgabe'):
+            current_reasoning.append(line)
     
-    return answers
+    # Letzte Aufgabe speichern
+    if current_task and current_answer:
+        result[f"Aufgabe {current_task}"] = {
+            'answer': current_answer,
+            'reasoning': ' '.join(current_reasoning).strip()
+        }
+    
+    return result
 
 # --- Claude Solver mit Fernuni-Fokus ---
 def solve_with_claude(ocr_text, previous_feedback=None):
@@ -169,14 +203,18 @@ KLAUSURTEXT:
 
 ANWEISUNGEN:
 1. Identifiziere alle Aufgaben im Text
-2. Bei Multiple Choice: Gib die BUCHSTABEN der richtigen Antworten an
-3. Nutze NUR Fernuni-Definitionen, keine anderen Quellen!
-4. Format:
+2. Bei Multiple Choice: PRÜFE JEDE OPTION (A,B,C,D,E) EINZELN!
+3. Gib die BUCHSTABEN ALLER richtigen Antworten an
+4. Nutze NUR Fernuni-Definitionen, keine anderen Quellen!
+5. Format:
 
-Aufgabe [Nr]: [Buchstaben der richtigen Antworten, z.B. "CDE" oder "A"]
-Begründung: [Kurze Erklärung mit Fernuni-Bezug]
+Aufgabe [Nr]: [Buchstaben der richtigen Antworten, z.B. "ABE" oder "CDE"]
+Begründung: [Detaillierte Erklärung mit Fernuni-Bezug für jede Option]
 
-WICHTIG: Keine Zahlen als Antwort, nur Buchstaben!"""
+WICHTIG: 
+- Keine Zahlen als Antwort, nur Buchstaben!
+- Harris-Formel unterstellt (s,Q)-Politik, NICHT (T,Q)-Politik!
+- Bei EOQ sind Lager- und Bestellkosten identisch!"""
 
     response = claude_client.messages.create(
         model="claude-4-opus-20250514",
@@ -204,14 +242,18 @@ KLAUSURTEXT:
 
 ANWEISUNGEN:
 1. Identifiziere alle Aufgaben im Text
-2. Bei Multiple Choice: Gib die BUCHSTABEN der richtigen Antworten an
-3. Nutze NUR Fernuni-Definitionen, keine anderen Quellen!
-4. Format:
+2. Bei Multiple Choice: PRÜFE JEDE OPTION (A,B,C,D,E) EINZELN!
+3. Gib die BUCHSTABEN ALLER richtigen Antworten an
+4. Nutze NUR Fernuni-Definitionen, keine anderen Quellen!
+5. Format:
 
-Aufgabe [Nr]: [Buchstaben der richtigen Antworten, z.B. "CDE" oder "A"]
-Begründung: [Kurze Erklärung mit Fernuni-Bezug]
+Aufgabe [Nr]: [Buchstaben der richtigen Antworten, z.B. "ABE" oder "CDE"]
+Begründung: [Detaillierte Erklärung mit Fernuni-Bezug für jede Option]
 
-WICHTIG: Keine Zahlen als Antwort, nur Buchstaben!"""
+WICHTIG: 
+- Keine Zahlen als Antwort, nur Buchstaben!
+- Harris-Formel unterstellt (s,Q)-Politik, NICHT (T,Q)-Politik!
+- Bei EOQ sind Lager- und Bestellkosten identisch!"""
 
     response = openai_client.chat.completions.create(
         model=GPT_MODEL,
@@ -225,9 +267,9 @@ WICHTIG: Keine Zahlen als Antwort, nur Buchstaben!"""
     
     return response.choices[0].message.content
 
-# --- VEREINFACHTE KONFLIKTLÖSUNG ---
-def resolve_conflicts_simple(ocr_text, claude_sol, gpt_sol, max_iterations=2):
-    """Einfachere Konfliktlösung mit besserer Transparenz"""
+# --- VERBESSERTE KONFLIKTLÖSUNG ---
+def resolve_conflicts_improved(ocr_text, claude_sol, gpt_sol, max_iterations=2):
+    """Verbesserte Konfliktlösung mit strukturierter Anzeige"""
     
     # Zeige beide initiale Lösungen
     st.markdown("### 🔄 Initiale Lösungen:")
@@ -240,27 +282,27 @@ def resolve_conflicts_simple(ocr_text, claude_sol, gpt_sol, max_iterations=2):
         st.markdown(f"**{GPT_MODEL}:**")
         st.code(gpt_sol, language=None)
     
-    # Extrahiere Antworten
-    claude_answers = extract_final_answers(claude_sol)
-    gpt_answers = extract_final_answers(gpt_sol)
+    # Extrahiere strukturierte Lösungen
+    claude_structured = extract_structured_solution(claude_sol)
+    gpt_structured = extract_structured_solution(gpt_sol)
     
-    st.markdown("### 🔍 Antwortvergleich:")
-    st.write(f"**Claude:** {claude_answers}")
-    st.write(f"**GPT:** {gpt_answers}")
+    st.markdown("### 🔍 Strukturierter Antwortvergleich:")
+    st.write(f"**Claude:** {[(task, data['answer']) for task, data in claude_structured.items()]}")
+    st.write(f"**GPT:** {[(task, data['answer']) for task, data in gpt_structured.items()]}")
     
     # Prüfe auf Unterschiede
-    all_tasks = set(claude_answers.keys()) | set(gpt_answers.keys())
+    all_tasks = set(claude_structured.keys()) | set(gpt_structured.keys())
     discrepancies = []
     
     for task in all_tasks:
-        claude_ans = claude_answers.get(task, "")
-        gpt_ans = gpt_answers.get(task, "")
+        claude_ans = claude_structured.get(task, {}).get('answer', '')
+        gpt_ans = gpt_structured.get(task, {}).get('answer', '')
         if claude_ans != gpt_ans:
             discrepancies.append(f"{task}: Claude='{claude_ans}' vs GPT='{gpt_ans}'")
     
     if not discrepancies:
         st.success("✅ Konsens erreicht!")
-        return True, claude_sol
+        return True, claude_structured
     
     st.warning(f"⚠️ Unterschiede gefunden: {discrepancies}")
     
@@ -275,11 +317,13 @@ def resolve_conflicts_simple(ocr_text, claude_sol, gpt_sol, max_iterations=2):
 ACHTUNG: Diskrepanz mit anderem Modell:
 {chr(10).join(discrepancies)}
 
-WICHTIG: 
-- Prüfe nochmals GENAU nach Fernuni Hagen Definitionen!
-- Bei Harris-Formel: Fernuni lehrt, dass sie KEINE (T,Q)-Politik unterstellt
-- Originäre Funktionen sind NUR: Beschaffung, Produktion, Absatz
-- Gib Antworten als BUCHSTABEN (A,B,C,D,E), nicht als Zahlen!
+KRITISCHE FERNUNI-REGEL: 
+- Harris-Formel unterstellt eine (s,Q)-Politik, NICHT (T,Q)-Politik!
+- Das bedeutet: Aussagen über (T,Q)-Politik bei Harris sind FALSCH!
+- Bei EOQ sind Lager- und Bestellkosten identisch!
+- PRÜFE JEDE OPTION A,B,C,D,E EINZELN!
+
+Originäre Funktionen sind NUR: Beschaffung, Produktion, Absatz
 """
         
         # Neue Versuche
@@ -297,27 +341,27 @@ WICHTIG:
             st.code(current_gpt, language=None)
         
         # Prüfe erneut
-        claude_answers = extract_final_answers(current_claude)
-        gpt_answers = extract_final_answers(current_gpt)
+        claude_structured = extract_structured_solution(current_claude)
+        gpt_structured = extract_structured_solution(current_gpt)
         
-        st.write(f"**Claude:** {claude_answers}")  
-        st.write(f"**GPT:** {gpt_answers}")
+        st.write(f"**Claude:** {[(task, data['answer']) for task, data in claude_structured.items()]}")  
+        st.write(f"**GPT:** {[(task, data['answer']) for task, data in gpt_structured.items()]}")
         
         discrepancies = []
         for task in all_tasks:
-            claude_ans = claude_answers.get(task, "")
-            gpt_ans = gpt_answers.get(task, "")
+            claude_ans = claude_structured.get(task, {}).get('answer', '')
+            gpt_ans = gpt_structured.get(task, {}).get('answer', '')
             if claude_ans != gpt_ans:
                 discrepancies.append(f"{task}: Claude='{claude_ans}' vs GPT='{gpt_ans}'")
         
         if not discrepancies:
             st.success("✅ Konsens erreicht!")
-            return True, current_claude
+            return True, claude_structured
         
         st.warning(f"⚠️ Immer noch Unterschiede: {discrepancies}")
     
     st.error("❌ Kein Konsens nach allen Iterationen!")
-    return False, (current_claude, current_gpt)
+    return False, (claude_structured, gpt_structured)
 
 # --- MAIN UI ---
 uploaded_file = st.file_uploader(
@@ -367,28 +411,36 @@ if uploaded_file is not None:
                 gpt_solution = solve_with_gpt(ocr_text)
             
             # Konfliktlösung mit voller Transparenz
-            consensus, result = resolve_conflicts_simple(ocr_text, claude_solution, gpt_solution)
+            consensus, result = resolve_conflicts_improved(ocr_text, claude_solution, gpt_solution)
             
             st.markdown("---")
             st.markdown("### 🎯 FINALE LÖSUNG:")
             
             if consensus:
-                # Zeige finale Antwort strukturiert
-                lines = result.split('\n')
-                current_task = None
-                
-                for line in lines:
-                    line = line.strip()
-                    if line.startswith('Aufgabe'):
-                        if ':' in line:
-                            task, answer = line.split(':', 1)
-                            st.markdown(f"### {task}: **{answer.strip()}**")
-                            current_task = task
-                    elif line.startswith('Begründung:'):
-                        st.markdown(f"*{line}*")
-                        st.markdown("")  # Leerzeile
+                # Zeige strukturierte finale Antwort
+                for task, data in result.items():
+                    st.markdown(f"### {task}: **{data['answer']}**")
+                    if data['reasoning']:
+                        st.markdown(f"*Begründung: {data['reasoning']}*")
+                    st.markdown("")  # Leerzeile
             else:
                 st.error("❌ Finale Uneinigkeit - manuelle Prüfung erforderlich!")
+                
+                # Zeige beide finalen Strukturen
+                claude_final, gpt_final = result
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Claude Final:**")
+                    for task, data in claude_final.items():
+                        st.markdown(f"**{task}: {data['answer']}**")
+                        st.caption(data['reasoning'][:100] + "..." if len(data['reasoning']) > 100 else data['reasoning'])
+                
+                with col2:
+                    st.markdown("**GPT Final:**")
+                    for task, data in gpt_final.items():
+                        st.markdown(f"**{task}: {data['answer']}**")
+                        st.caption(data['reasoning'][:100] + "..." if len(data['reasoning']) > 100 else data['reasoning'])
                 
         except Exception as e:
             st.error(f"Fehler: {str(e)}")
