@@ -137,68 +137,21 @@ FERNUNI HAGEN SPEZIFISCHE REGELN (STRIKT BEFOLGEN!):
    - Antworte mit BUCHSTABEN (A,B,C,D,E), nicht mit Zahlen!
 """
 
-# --- Antwortextraktion VERBESSERT ---
-def extract_answers_improved(solution_text):
-    """Extrahiert Antworten und konvertiert zu Buchstaben"""
+# --- VEREINFACHTE ANTWORTEXTRAKTION ---
+def extract_final_answers(solution_text):
+    """Extrahiert nur die finalen Antworten ohne komplexe Verarbeitung"""
     answers = {}
+    lines = solution_text.split('\n')
     
-    # Suche nach verschiedenen Antwortformaten
-    patterns = [
-        # Format: "Aufgabe 1: A, C, D" oder "Aufgabe 1: ACD"
-        r'Aufgabe\s*(\d+)\s*:\s*([A-E,\s]+)',
-        # Format: "Aufgabe 1: 3 richtige (C, D, E)"
-        r'Aufgabe\s*(\d+)\s*:.*?\(([A-E,\s]+)\)',
-        # Format mit Zahlen: "Aufgabe 1: 3.00"
-        r'Aufgabe\s*(\d+)\s*:\s*([\d\.]+)\s*(?:richtige)?'
-    ]
-    
-    for pattern in patterns:
-        matches = re.findall(pattern, solution_text, re.IGNORECASE | re.MULTILINE)
-        for task_num, answer in matches:
-            # Wenn Antwort eine Zahl ist, versuche aus Kontext die Buchstaben zu finden
-            if re.match(r'^[\d\.]+$', answer.strip()):
-                # Suche nach Buchstaben in der Begründung
-                begr_pattern = rf'Aufgabe\s*{task_num}.*?(?:richtig|korrekt)[^\n]*?\b([A-E,\s]+)\b'
-                begr_match = re.search(begr_pattern, solution_text, re.IGNORECASE | re.DOTALL)
-                if begr_match:
-                    letters = begr_match.group(1)
-                    answer = ''.join(sorted(c for c in letters.upper() if c in 'ABCDE'))
-            else:
-                # Normalisiere Buchstaben-Antworten
-                answer = ''.join(sorted(c for c in answer.upper() if c in 'ABCDE'))
-            
-            if answer:
-                answers[f"Aufgabe {task_num}"] = answer
+    for line in lines:
+        # Suche nach "Aufgabe X: BUCHSTABEN"
+        match = re.match(r'Aufgabe\s*(\d+)\s*:\s*([A-E]+)', line.strip(), re.IGNORECASE)
+        if match:
+            task_num = match.group(1)
+            letters = ''.join(sorted(c for c in match.group(2).upper() if c in 'ABCDE'))
+            answers[f"Aufgabe {task_num}"] = letters
     
     return answers
-
-# --- BESSERE ANTWORTVERGLEICHUNG ---
-def normalize_answer(answer):
-    """Normalisiert Antworten für besseren Vergleich"""
-    if not answer:
-        return ""
-    # Entferne alle Sonderzeichen und Leerzeichen, sortiere Buchstaben
-    letters = ''.join(sorted(c for c in str(answer).upper() if c in 'ABCDE'))
-    return letters
-
-def compare_answers(answers1, answers2):
-    """Vergleicht zwei Antwort-Dictionaries"""
-    # Alle Tasks aus beiden Antworten
-    all_tasks = set(answers1.keys()) | set(answers2.keys())
-    
-    discrepancies = []
-    for task in all_tasks:
-        ans1 = normalize_answer(answers1.get(task, ""))
-        ans2 = normalize_answer(answers2.get(task, ""))
-        
-        if ans1 != ans2:
-            discrepancies.append({
-                'task': task,
-                'claude': ans1 or "?",
-                'gpt': ans2 or "?"
-            })
-    
-    return len(discrepancies) == 0, discrepancies
 
 # --- Claude Solver mit Fernuni-Fokus ---
 def solve_with_claude(ocr_text, previous_feedback=None):
@@ -226,7 +179,7 @@ Begründung: [Kurze Erklärung mit Fernuni-Bezug]
 WICHTIG: Keine Zahlen als Antwort, nur Buchstaben!"""
 
     response = claude_client.messages.create(
-        model="claude-4-opus-20250514",  # DEIN URSPRÜNGLICHER CLAUDE 4 OPUS!
+        model="claude-4-opus-20250514",
         max_tokens=3000,
         temperature=0.1,
         system="Du bist ein Fernuni Hagen Experte für Modul 31031. Verwende AUSSCHLIESSLICH Fernuni-Definitionen.",
@@ -272,34 +225,55 @@ WICHTIG: Keine Zahlen als Antwort, nur Buchstaben!"""
     
     return response.choices[0].message.content
 
-# --- ITERATIVE KONFLIKTLÖSUNG KORRIGIERT ---
-def resolve_conflicts(ocr_text, claude_sol, gpt_sol, max_iterations=2):
-    """Iterative Konfliktlösung mit Fernuni-Fokus - KORRIGIERT"""
+# --- VEREINFACHTE KONFLIKTLÖSUNG ---
+def resolve_conflicts_simple(ocr_text, claude_sol, gpt_sol, max_iterations=2):
+    """Einfachere Konfliktlösung mit besserer Transparenz"""
     
-    # Initiale Prüfung
-    claude_answers = extract_answers_improved(claude_sol)
-    gpt_answers = extract_answers_improved(gpt_sol)
-    is_consensus, discrepancies = compare_answers(claude_answers, gpt_answers)
+    # Zeige beide initiale Lösungen
+    st.markdown("### 🔄 Initiale Lösungen:")
     
-    if is_consensus:
-        return True, claude_sol  # Bereits Konsens
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Claude:**")
+        st.code(claude_sol, language=None)
+    with col2:
+        st.markdown(f"**{GPT_MODEL}:**")
+        st.code(gpt_sol, language=None)
     
-    # Iterationen bei Uneinigkeit
+    # Extrahiere Antworten
+    claude_answers = extract_final_answers(claude_sol)
+    gpt_answers = extract_final_answers(gpt_sol)
+    
+    st.markdown("### 🔍 Antwortvergleich:")
+    st.write(f"**Claude:** {claude_answers}")
+    st.write(f"**GPT:** {gpt_answers}")
+    
+    # Prüfe auf Unterschiede
+    all_tasks = set(claude_answers.keys()) | set(gpt_answers.keys())
+    discrepancies = []
+    
+    for task in all_tasks:
+        claude_ans = claude_answers.get(task, "")
+        gpt_ans = gpt_answers.get(task, "")
+        if claude_ans != gpt_ans:
+            discrepancies.append(f"{task}: Claude='{claude_ans}' vs GPT='{gpt_ans}'")
+    
+    if not discrepancies:
+        st.success("✅ Konsens erreicht!")
+        return True, claude_sol
+    
+    st.warning(f"⚠️ Unterschiede gefunden: {discrepancies}")
+    
+    # Iterationen
     current_claude = claude_sol
     current_gpt = gpt_sol
     
     for iteration in range(max_iterations):
-        # Feedback für nächste Iteration erstellen
-        discrepancy_text = []
-        for disc in discrepancies:
-            discrepancy_text.append(
-                f"{disc['task']}: Claude sagt '{disc['claude']}', "
-                f"{GPT_MODEL} sagt '{disc['gpt']}'"
-            )
+        st.markdown(f"### 🔄 Iteration {iteration + 2}:")
         
         feedback = f"""
-ACHTUNG: Diskrepanz mit anderem Modell bei:
-{chr(10).join(discrepancy_text)}
+ACHTUNG: Diskrepanz mit anderem Modell:
+{chr(10).join(discrepancies)}
 
 WICHTIG: 
 - Prüfe nochmals GENAU nach Fernuni Hagen Definitionen!
@@ -308,20 +282,42 @@ WICHTIG:
 - Gib Antworten als BUCHSTABEN (A,B,C,D,E), nicht als Zahlen!
 """
         
-        # Neue Lösungsversuche mit Feedback
-        with st.spinner(f"Iteration {iteration + 2}: Modelle überprüfen Diskrepanzen..."):
+        # Neue Versuche
+        with st.spinner(f"Iteration {iteration + 2} läuft..."):
             current_claude = solve_with_claude(ocr_text, feedback)
             current_gpt = solve_with_gpt(ocr_text, feedback)
         
-        # **KRITISCH: Erneute Prüfung nach jeder Iteration**
-        claude_answers = extract_answers_improved(current_claude)
-        gpt_answers = extract_answers_improved(current_gpt)
-        is_consensus, discrepancies = compare_answers(claude_answers, gpt_answers)
+        # Zeige neue Antworten
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Claude (neu):**")
+            st.code(current_claude, language=None)
+        with col2:
+            st.markdown(f"**{GPT_MODEL} (neu):**")
+            st.code(current_gpt, language=None)
         
-        if is_consensus:
-            return True, current_claude  # Konsens erreicht!
+        # Prüfe erneut
+        claude_answers = extract_final_answers(current_claude)
+        gpt_answers = extract_final_answers(current_gpt)
+        
+        st.write(f"**Claude:** {claude_answers}")  
+        st.write(f"**GPT:** {gpt_answers}")
+        
+        discrepancies = []
+        for task in all_tasks:
+            claude_ans = claude_answers.get(task, "")
+            gpt_ans = gpt_answers.get(task, "")
+            if claude_ans != gpt_ans:
+                discrepancies.append(f"{task}: Claude='{claude_ans}' vs GPT='{gpt_ans}'")
+        
+        if not discrepancies:
+            st.success("✅ Konsens erreicht!")
+            return True, current_claude
+        
+        st.warning(f"⚠️ Immer noch Unterschiede: {discrepancies}")
     
-    return False, (current_claude, current_gpt)  # Kein Konsens nach allen Iterationen
+    st.error("❌ Kein Konsens nach allen Iterationen!")
+    return False, (current_claude, current_gpt)
 
 # --- MAIN UI ---
 uploaded_file = st.file_uploader(
@@ -370,59 +366,33 @@ if uploaded_file is not None:
                 claude_solution = solve_with_claude(ocr_text)
                 gpt_solution = solve_with_gpt(ocr_text)
             
-            # Konfliktlösung
-            consensus, result = resolve_conflicts(ocr_text, claude_solution, gpt_solution)
+            # Konfliktlösung mit voller Transparenz
+            consensus, result = resolve_conflicts_simple(ocr_text, claude_solution, gpt_solution)
             
-            st.markdown("### Ergebnis:")
+            st.markdown("---")
+            st.markdown("### 🎯 FINALE LÖSUNG:")
             
             if consensus:
-                st.success("✅ Konsens erreicht!")
-                # Zeige finale Lösung
+                # Zeige finale Antwort strukturiert
                 lines = result.split('\n')
+                current_task = None
+                
                 for line in lines:
-                    if line.strip():
-                        if line.startswith('Aufgabe'):
-                            parts = line.split(':', 1)
-                            if len(parts) == 2:
-                                st.markdown(f"### {parts[0]}: **{parts[1].strip()}**")
-                        elif line.startswith('Begründung:'):
-                            st.markdown(f"*{line}*")
+                    line = line.strip()
+                    if line.startswith('Aufgabe'):
+                        if ':' in line:
+                            task, answer = line.split(':', 1)
+                            st.markdown(f"### {task}: **{answer.strip()}**")
+                            current_task = task
+                    elif line.startswith('Begründung:'):
+                        st.markdown(f"*{line}*")
+                        st.markdown("")  # Leerzeile
             else:
-                st.warning("⚠️ Modelle uneinig! Zeige beide Lösungen zur Überprüfung.")
+                st.error("❌ Finale Uneinigkeit - manuelle Prüfung erforderlich!")
                 
-                # Zeige beide Lösungen
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("**Lösungen (Claude):**")
-                    lines = result[0].split('\n')
-                    for line in lines:
-                        if line.strip() and line.startswith('Aufgabe'):
-                            st.markdown(f"{line} **(Claude)**")
-                        elif line.startswith('Begründung:'):
-                            st.markdown(f"*{line}*")
-                
-                with col2:
-                    st.markdown(f"**Lösungen ({GPT_MODEL}):**")
-                    lines = result[1].split('\n')
-                    for line in lines:
-                        if line.strip() and line.startswith('Aufgabe'):
-                            st.markdown(f"{line} **({GPT_MODEL})**")
-                        elif line.startswith('Begründung:'):
-                            st.markdown(f"*{line}*")
-                
-                # Debug Info
-                with st.expander("Rohe Antworten"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**Claude:**")
-                        st.code(result[0])
-                    with col2:
-                        st.markdown(f"**{GPT_MODEL}:**")
-                        st.code(result[1])
-                        
         except Exception as e:
             st.error(f"Fehler: {str(e)}")
+            st.exception(e)
 
 # Footer
 st.markdown("---")
