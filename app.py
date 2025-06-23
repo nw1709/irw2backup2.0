@@ -81,7 +81,7 @@ def extract_text_with_gemini(_image, file_hash):
                 _image
             ],
             generation_config={
-                "temperature": 0.1,
+                "temperature": 0.0,
                 "max_output_tokens": 4000  # Reduziert für Kompatibilität
             }
         )
@@ -220,7 +220,7 @@ def solve_with_gpt(ocr_text, cross_check_info=None):
             model=GPT_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=3000,           # KORRIGIERT: Unter 4096 Limit
-            temperature=0.0,           # Absolut deterministisch
+            temperature=0.1,           # Absolut deterministisch
             top_p=0.1,                # Sehr fokussiert
             frequency_penalty=0.0,     # Keine Wiederholungsbestrafung
             presence_penalty=0.0,      # Keine Präsenzbestrafung
