@@ -82,7 +82,7 @@ def extract_text_with_gemini(_image, file_hash):
             ],
             generation_config={
                 "temperature": 0,
-                "max_output_tokens": 8000  # Erhöht für längere Texte
+                "max_output_tokens": 4000  # Reduziert für Kompatibilität
             }
         )
         return response.text.strip()
@@ -193,37 +193,43 @@ Aufgabe [Nr]: [NUR die finale Antwort - Zahl oder Buchstabe(n)]
 Begründung: [1 Satz auf Deutsch]
 """
 
-# --- OPTIMIERTE SOLVER ---
+# --- OPTIMIERTE SOLVER MIT KORRIGIERTEN TOKEN-LIMITS ---
 def solve_with_claude(ocr_text, cross_check_info=None):
     """Claude mit optimierten Parametern"""
     prompt = create_base_prompt(ocr_text, cross_check_info)
     
-    response = claude_client.messages.create(
-        model="claude-4-opus-20250514",
-        max_tokens=8000,           # Erhöht für vollständige Antworten
-        temperature=0.0,           # Absolut deterministisch
-        top_p=0.1,                # Sehr fokussiert auf wahrscheinlichste Tokens
-        messages=[{"role": "user", "content": prompt}]
-    )
-    
-    return response.content[0].text
+    try:
+        response = claude_client.messages.create(
+            model="claude-4-opus-20250514",
+            max_tokens=4000,           # Sicher für Claude
+            temperature=0.0,           # Absolut deterministisch
+            top_p=0.1,                # Sehr fokussiert auf wahrscheinlichste Tokens
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"Claude API Error: {str(e)}")
+        raise e
 
 def solve_with_gpt(ocr_text, cross_check_info=None):
-    """GPT mit optimierten Parametern"""
+    """GPT mit korrigierten Token-Limits"""
     prompt = create_base_prompt(ocr_text, cross_check_info)
     
-    response = openai_client.chat.completions.create(
-        model=GPT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=8000,           # Erhöht für vollständige Antworten
-        temperature=0.0,           # Absolut deterministisch
-        top_p=0.1,                # Sehr fokussiert
-        frequency_penalty=0.0,     # Keine Wiederholungsbestrafung
-        presence_penalty=0.0,      # Keine Präsenzbestrafung
-        seed=42                    # Reproduzierbare Ergebnisse
-    )
-    
-    return response.choices[0].message.content
+    try:
+        response = openai_client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=3000,           # KORRIGIERT: Unter 4096 Limit
+            temperature=0.0,           # Absolut deterministisch
+            top_p=0.1,                # Sehr fokussiert
+            frequency_penalty=0.0,     # Keine Wiederholungsbestrafung
+            presence_penalty=0.0,      # Keine Präsenzbestrafung
+            seed=42                    # Reproduzierbare Ergebnisse
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error(f"GPT API Error: {str(e)}")
+        raise e
 
 # --- INTELLIGENTE KREUZVALIDIERUNG ---
 def cross_validation_consensus(ocr_text, max_rounds=3):
@@ -233,8 +239,12 @@ def cross_validation_consensus(ocr_text, max_rounds=3):
     
     # Runde 1: Unabhängige Analyse
     with st.spinner("Runde 1: Unabhängige Expertenanalyse..."):
-        claude_solution = solve_with_claude(ocr_text)
-        gpt_solution = solve_with_gpt(ocr_text)
+        try:
+            claude_solution = solve_with_claude(ocr_text)
+            gpt_solution = solve_with_gpt(ocr_text)
+        except Exception as e:
+            st.error(f"API-Fehler in Runde 1: {str(e)}")
+            return False, None
     
     # Strukturiere Antworten
     claude_data = extract_structured_answers(claude_solution)
@@ -286,11 +296,15 @@ def cross_validation_consensus(ocr_text, max_rounds=3):
             
             # Kreuzvalidierung ohne Voreingenommenheit
             with st.spinner(f"Kreuzvalidierung Runde {round_num + 2}..."):
-                # Sammle nur die Diskrepanzen als neutralen Context
-                discrepancy_summary = f"Diskrepanzen gefunden bei: {[d['task'] for d in differences]}. Bitte nochmalige sorgfältige Prüfung."
-                
-                claude_solution = solve_with_claude(ocr_text, discrepancy_summary)
-                gpt_solution = solve_with_gpt(ocr_text, discrepancy_summary)
+                try:
+                    # Sammle nur die Diskrepanzen als neutralen Context
+                    discrepancy_summary = f"Diskrepanzen gefunden bei: {[d['task'] for d in differences]}. Bitte nochmalige sorgfältige Prüfung."
+                    
+                    claude_solution = solve_with_claude(ocr_text, discrepancy_summary)
+                    gpt_solution = solve_with_gpt(ocr_text, discrepancy_summary)
+                except Exception as e:
+                    st.error(f"API-Fehler in Runde {round_num + 2}: {str(e)}")
+                    return False, (claude_data, gpt_data)
             
             claude_data = extract_structured_answers(claude_solution)
             gpt_data = extract_structured_answers(gpt_solution)
@@ -341,28 +355,31 @@ if uploaded_file is not None:
                 st.success("✅ Lösung durch Kreuzvalidierung bestätigt!")
                 
             else:
-                st.error("❌ Experten uneinig - Beide Lösungen anzeigen:")
-                
-                claude_final, gpt_final = result
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Claude Finale Antworten:**")
-                    for task, data in claude_final.items():
-                        st.markdown(f"**{task}: {data['answer']}**")
-                        st.caption(data['reasoning'])
-                
-                with col2:
-                    st.markdown(f"**{GPT_MODEL} Finale Antworten:**")
-                    for task, data in gpt_final.items():
-                        st.markdown(f"**{task}: {data['answer']}**")
-                        st.caption(data['reasoning'])
+                if result:  # Sicherstellen, dass result nicht None ist
+                    st.error("❌ Experten uneinig - Beide Lösungen anzeigen:")
+                    
+                    claude_final, gpt_final = result
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Claude Finale Antworten:**")
+                        for task, data in claude_final.items():
+                            st.markdown(f"**{task}: {data['answer']}**")
+                            st.caption(data['reasoning'])
+                    
+                    with col2:
+                        st.markdown(f"**{GPT_MODEL} Finale Antworten:**")
+                        for task, data in gpt_final.items():
+                            st.markdown(f"**{task}: {data['answer']}**")
+                            st.caption(data['reasoning'])
+                else:
+                    st.error("❌ Schwerwiegender API-Fehler - bitte erneut versuchen")
             
-            st.info("💡 OCR gecacht | Optimierte Parameter | Intelligente Kreuzvalidierung")
+            st.info("💡 OCR gecacht | Token-Limits optimiert | Intelligente Kreuzvalidierung")
                     
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         st.error(f"❌ Fehler: {str(e)}")
 
 st.markdown("---")
-st.caption(f"🦊 Optimized Expert System | Claude-4 Opus + {GPT_MODEL} | Parameter-Tuned")
+st.caption(f"🦊 Token-Optimized System | Claude-4 Opus + {GPT_MODEL} | Max Performance")
