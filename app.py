@@ -81,7 +81,7 @@ def extract_text_with_gemini(_image, file_hash):
                 _image
             ],
             generation_config={
-                "temperature": 0,
+                "temperature": 0.1,
                 "max_output_tokens": 4000  # Reduziert für Kompatibilität
             }
         )
@@ -202,7 +202,7 @@ def solve_with_claude(ocr_text, cross_check_info=None):
         response = claude_client.messages.create(
             model="claude-4-opus-20250514",
             max_tokens=4000,           # Sicher für Claude
-            temperature=0.0,           # Absolut deterministisch
+            temperature=0.1,           # Absolut deterministisch
             top_p=0.1,                # Sehr fokussiert auf wahrscheinlichste Tokens
             messages=[{"role": "user", "content": prompt}]
         )
