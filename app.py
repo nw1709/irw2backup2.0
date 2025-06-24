@@ -155,7 +155,7 @@ OCR Text:
         if model_type == "claude":
             response = claude_client.messages.create(
                 model="claude-4-opus-20250514",
-                max_tokens=10000,
+                max_tokens=8000,
                 temperature=0.1,
                 top_p=0.1,
                 messages=[{"role": "user", "content": prompt}]
@@ -192,8 +192,8 @@ INSTRUCTIONS:
 
 CRITICAL: You MUST provide answers in this EXACT format for EVERY task found:
 
-Aufgabe [Nr]: [Final answer - letter(s) or number]
-Begründung: [1 sentence in German]
+Aufgabe [Nr]: [Final answer]
+Begründung: [1 brief but consise sentence in German]
 
 NO OTHER FORMAT IS ACCEPTABLE. If you cannot determine a task number, use the closest identifiable number.
 """
@@ -205,7 +205,7 @@ def solve_with_claude(ocr_text):
         logger.info("Sending request to Claude...")
         response = claude_client.messages.create(
             model="claude-4-opus-20250514",
-            max_tokens=10000,
+            max_tokens=4000,
             temperature=0.1,
             top_p=0.1,
             messages=[{"role": "user", "content": prompt}]
@@ -231,8 +231,8 @@ REFORMAT NOW - USE THE EXACT FORMAT ABOVE FOR EVERY TASK:"""
         
         self_check_response = claude_client.messages.create(
             model="claude-4-opus-20250514",
-            max_tokens=8000,
-            temperature=0.1,
+            max_tokens=2000,
+            temperature=0.0,
             top_p=0.1,
             messages=[{"role": "user", "content": self_check_prompt}]
         )
@@ -252,9 +252,7 @@ def solve_with_gpt(ocr_text):
             model="gpt-4-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=4000,
-            temperature=0.1,
-            top_p=0.1,
-            seed=42
+            temperature=0.1
         )
         logger.info(f"GPT response received, length: {len(response.choices[0].message.content)} characters")
         return response.choices[0].message.content
@@ -347,14 +345,14 @@ if uploaded_file is not None:
                 gpt_validation = validate_ocr_with_llm(ocr_text, "gpt")
                 st.code(gpt_validation if gpt_validation else "Fehler bei Validierung")
         
-        if st.button("🎯 Lösung mit Kreuzvalidierung", type="primary"):
+        if st.button("Lösung mit Kreuzvalidierung", type="primary"):
             if not ocr_text:
                 st.error("❌ Kein OCR-Text verfügbar. Bitte überprüfe das Bild.")
             else:
                 consensus, result = cross_validation_consensus(ocr_text)
                 
                 st.markdown("---")
-                st.markdown("### FINALE LÖSUNG:")
+                st.markdown("###FINALE LÖSUNG:")
                 
                 if result is None:
                     st.error("❌ Keine Lösung generiert. Überprüfe den OCR-Text oder Logs.")
@@ -373,7 +371,7 @@ if uploaded_file is not None:
                     else:
                         st.warning("⚠️ GPT-Kontrolle zeigte Diskrepanzen – Claude-Lösung bevorzugt.")
                 
-                st.info("💡 OCR gecacht | Claude Opus 4 priorisiert | Robuste Antwortextraktion | GPT Fallback")
+                st.info("OCR gecacht | Claude Opus 4 priorisiert | Robuste Antwortextraktion | GPT Fallback")
                     
     except Exception as e:
         logger.error(f"Error: {str(e)}")
