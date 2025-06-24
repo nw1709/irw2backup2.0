@@ -167,9 +167,7 @@ OCR Text:
                 model="gpt-4-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=4000,
-                temperature=0.1,
-                top_p=0.1,
-                seed=42
+                temperature=0.1
             )
             logger.info(f"GPT OCR validation received, length: {len(response.choices[0].message.content)} characters")
             return response.choices[0].message.content
@@ -232,7 +230,7 @@ REFORMAT NOW - USE THE EXACT FORMAT ABOVE FOR EVERY TASK:"""
         self_check_response = claude_client.messages.create(
             model="claude-4-opus-20250514",
             max_tokens=2000,
-            temperature=0.0,
+            temperature=0.1,
             top_p=0.1,
             messages=[{"role": "user", "content": self_check_prompt}]
         )
