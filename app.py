@@ -1,11 +1,13 @@
 import streamlit as st
-from anthropic import Anthropic
-from openai import OpenAI
+from anthropic import Anthropic, AnthropicError
+from openai import OpenAI, OpenAIError
 from PIL import Image
 import google.generativeai as genai
 import logging
 import hashlib
 import re
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # --- Logger Setup ---
 logging.basicConfig(level=logging.INFO)
@@ -166,7 +168,7 @@ OCR Text:
             response = openai_client.chat.completions.create(
                 model="gpt-4-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=4000,
+                max_tokens=8000,
                 temperature=0.1
             )
             logger.info(f"GPT OCR validation received, length: {len(response.choices[0].message.content)} characters")
@@ -203,7 +205,7 @@ def solve_with_claude(ocr_text):
         logger.info("Sending request to Claude...")
         response = claude_client.messages.create(
             model="claude-4-opus-20250514",
-            max_tokens=4000,
+            max_tokens=8000,
             temperature=0.1,
             top_p=0.1,
             messages=[{"role": "user", "content": prompt}]
@@ -229,7 +231,7 @@ REFORMAT NOW - USE THE EXACT FORMAT ABOVE FOR EVERY TASK:"""
         
         self_check_response = claude_client.messages.create(
             model="claude-4-opus-20250514",
-            max_tokens=2000,
+            max_tokens=4000,
             temperature=0.1,
             top_p=0.1,
             messages=[{"role": "user", "content": self_check_prompt}]
