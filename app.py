@@ -198,14 +198,14 @@ Begründung: [1 brief but consise sentence in German]
 NO OTHER FORMAT IS ACCEPTABLE. If you cannot determine a task number, use the closest identifiable number.
 """
 
-# --- SOLVER MIT CLAUDE OPUS 4 MIT VERBESSERTER SELBSTKORREKTUR ---
+# --- SOLVER MIT CLAUDE OPUS 4.1 MIT VERBESSERTER SELBSTKORREKTUR ---
 def solve_with_claude(ocr_text):
     prompt = create_base_prompt(ocr_text)
     try:
         logger.info("Sending request to Claude...")
         response = claude_client.messages.create(
             model="claude-4-1-opus-20250805",
-            max_tokens=8000,
+            max_tokens=4096,
             temperature=0.1,
             top_p=0.1,
             messages=[{"role": "user", "content": prompt}]
@@ -231,7 +231,7 @@ REFORMAT NOW - USE THE EXACT FORMAT ABOVE FOR EVERY TASK:"""
         
         self_check_response = claude_client.messages.create(
             model="claude-4-1-opus-20250805",
-            max_tokens=4000,
+            max_tokens=4096,
             temperature=0.1,
             top_p=0.1,
             messages=[{"role": "user", "content": self_check_prompt}]
