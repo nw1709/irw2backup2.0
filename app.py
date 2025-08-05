@@ -157,7 +157,7 @@ OCR Text:
         if model_type == "claude":
             response = claude_client.messages.create(
                 model="claude-4-1-opus-20250805",
-                max_tokens=8000,
+                max_tokens=4096,
                 temperature=0.1,
                 top_p=0.1,
                 messages=[{"role": "user", "content": prompt}]
@@ -168,7 +168,7 @@ OCR Text:
             response = openai_client.chat.completions.create(
                 model="gpt-4-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=8000,
+                max_tokens=4096,
                 temperature=0.1
             )
             logger.info(f"GPT OCR validation received, length: {len(response.choices[0].message.content)} characters")
