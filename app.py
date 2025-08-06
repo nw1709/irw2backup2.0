@@ -1,31 +1,29 @@
-from openai import OpenAI
-client = OpenAI()
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import os
+from mistralai import Mistral
 
-# --- API Key Validation ---
-def validate_keys():
-    required_keys = {
-        'openai_key': ('sk-', "OpenAI")
-    }
-    missing = []
-    invalid = []
-    
-    for key, (prefix, name) in required_keys.items():
-        if key not in st.secrets:
-            missing.append(name)
-        elif not st.secrets[key].startswith(prefix):
-            invalid.append(name)
-    
-    if missing or invalid:
-        st.error(f"API Key Problem: Missing {', '.join(missing)} | Invalid {', '.join(invalid)}")
-        st.stop()
+api_key = os.environ["MISTRAL_API_KEY"]
+model = "mistral-large-latest"
 
-validate_keys()
+client = Mistral(api_key=api_key)
 
-response = client.responses.create(
-  prompt={
-    "id": "pmpt_68926fcc3d188193a1fe80d0772aaacb0b558abf1fd783b6",
-    "version": "4"
-  }
-)
+chat_response = client.chat.complete(
+    model= model,
+    messages = [
+        {
+            "role": "user",
+            "content": """  You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
+
+Tasks:
+1. Read the task EXTREMELY carefully
+2. For graphs or charts: Use only the explicitly provided axis labels, scales, and intersection points to perform calculations
+3. Analyze the problem step-by-step as per Fernuni methodology
+4. For multiple choice: Evaluate each option individually based solely on the given data 
+5. Provide answers in this EXACT format for EVERY task found:
+Aufgabe [Nr]: [Final answer]
+Begründung: [One brief but concise sentence in german]
+
+CRITICAL: You MUST perform a self-check: ALWAYS re-evaluate your answer by checking the provided data to absolutely ensure it aligns with Fernuni standards 100%!",
+        },
+    ]
+)"""
+print(chat_response.choices[0].message.content)
