@@ -1,7 +1,6 @@
 import streamlit as st
 from PIL import Image
 import google.generativeai as genai
-from genai import types
 import logging
 import hashlib
 import re
