@@ -1,17 +1,10 @@
-import os
-from mistralai import Mistral
+from google import genai
+from google.genai import types
 
-api_key = os.environ["MISTRAL_API_KEY"]
-model = "mistral-large-latest"
-
-client = Mistral(api_key=api_key)
-
-chat_response = client.chat.complete(
-    model= model,
-    messages = [
-        {
-            "role": "user",
-            "content": """  You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    config=types.GenerateContentConfig(
+        system_instruction="""You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
 
 Tasks:
 1. Read the task EXTREMELY carefully
@@ -22,8 +15,8 @@ Tasks:
 Aufgabe [Nr]: [Final answer]
 Begründung: [One brief but concise sentence in german]
 
-CRITICAL: You MUST perform a self-check: ALWAYS re-evaluate your answer by checking the provided data to absolutely ensure it aligns with Fernuni standards 100%!",
-        },
-    ]
-)"""
-print(chat_response.choices[0].message.content)
+CRITICAL: You MUST perform a self-check: ALWAYS re-evaluate your answer by checking the provided data to absolutely ensure it aligns with Fernuni standards 100%!"""),
+    contents="Hello there"
+)
+
+print(response.text)
