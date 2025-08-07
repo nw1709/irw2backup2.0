@@ -22,7 +22,7 @@ try:
     anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
     GEMINI_MODEL_NAME = "gemini-1.5-pro-latest" 
-    GPT_MODEL_NAME = "o3"
+    GPT_MODEL_NAME = "o3-2025-04-16"
     CLAUDE_MODEL_NAME = "claude-opus-4-1-20250805"
     
     gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
