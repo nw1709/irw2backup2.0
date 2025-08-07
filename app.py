@@ -4,8 +4,10 @@ from PIL import Image
 import fitz  # PyMuPDF
 import io
 
-# --- Streamlit Page Configuration (Best practice to call this first) ---
-st.set_page_config(page_title="Fernuni Exam Solver", layout="wide")
+st.set_page_config(layout="centered", page_title="Koifox-Bot", page_icon="🦊")
+st.title("🦊 Koifox-Bot 3")
+st.markdown("*Gemini 2.5 Pro*")
+
 
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
