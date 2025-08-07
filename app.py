@@ -140,7 +140,7 @@ with col1:
 
         if images_to_process:
             st.session_state.images = images_to_process
-            st.image(images_to_process, caption=[f"Seite {i+1}" for i in range(len(images_to_process))], use_column_width=True)
+            st.image(images_to_process, caption=[f"Seite {i+1}" for i in range(len(images_to_process))], use_container_width=True)
 
 with col2:
     st.header("Lösungen der Experten")
