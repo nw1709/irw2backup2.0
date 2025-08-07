@@ -1,10 +1,12 @@
 import streamlit as st
 import google.generativeai as genai
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from anthropic import Anthropic
 from PIL import Image
+import logging
 import fitz  # PyMuPDF
 import io
+import os
 import re
 import base64
 from concurrent.futures import ThreadPoolExecutor
@@ -18,11 +20,10 @@ st.markdown("Ein Bot, der bei Uneinigkeit automatisch eine Debatte zwischen Gemi
 # --- API CLIENT INITIALISIERUNG ---
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+    openai_client = OpenAI(api_key=st.secrets["openai_key"])
     anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
     GEMINI_MODEL_NAME = "gemini-1.5-pro-latest" 
-    GPT_MODEL_NAME = "o3"
     CLAUDE_MODEL_NAME = "claude-opus-4-1-20250805"
     
     gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -30,6 +31,26 @@ try:
 except (KeyError, Exception) as e:
     st.error(f"Fehler bei der Initialisierung der API-Clients. Bitte prüfen Sie Ihre API-Keys in den Streamlit Secrets. Fehler: {e}")
     st.stop()
+
+# --- API Key Validation ---
+def validate_keys():
+    required_keys = {
+        'openai_key': ('sk-', "OpenAI")
+    }
+    missing = []
+    invalid = []
+    
+    for key, (prefix, name) in required_keys.items():
+        if key not in st.secrets:
+            missing.append(name)
+        elif not st.secrets[key].startswith(prefix):
+            invalid.append(name)
+    
+    if missing or invalid:
+        st.error(f"API Key Problem: Missing {', '.join(missing)} | Invalid {', '.join(invalid)}")
+        st.stop()
+
+validate_keys()
 
 
 # --- PROMPTS ---
@@ -113,7 +134,7 @@ def call_gpt(prompt, base64_image_list):
         content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}", "detail": "high"}})
     messages = [{"role": "user", "content": content}]
     try:
-        response = openai_client.chat.completions.create(model=GPT_MODEL_NAME, messages=messages, max_completion_tokens=1500, timeout=45.0)
+        response = openai_client.chat.completions.create(model=o3, messages=messages, max_completion_tokens=4000)
         return response.choices[0].message.content if response.choices and response.choices[0].message else "Leere Antwort von GPT."
     except Exception as e:
         return f"Fehler bei OpenAI API: {str(e)}"
