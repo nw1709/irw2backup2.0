@@ -4,14 +4,16 @@ from PIL import Image
 import fitz  # PyMuPDF
 import io
 
+# --- Streamlit Page Configuration (Best practice to call this first) ---
+st.set_page_config(page_title="Fernuni Exam Solver", layout="wide")
+
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 except Exception:
     st.error("Bitte konfigurieren Sie Ihren Google API Key in den Streamlit Secrets.")
-
+    st.stop() # Stop the app if the key is not configured
 
 # --- Hardcoded Expert Prompt ---
-# This is the specific, fixed prompt that will be used for every request.
 EXPERT_PROMPT = """
 You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
 
@@ -27,21 +29,18 @@ Begründung: [One brief but concise sentence in german]
 CRITICAL: You MUST perform a self-check: ALWAYS re-evaluate your answer by checking the provided data to absolutely ensure it aligns with Fernuni standards 100%!
 """
 
-
 # --- Gemini Model Initialization ---
-# Initialize the Gemini 1.5 Pro model for its powerful OCR and reasoning
 model = genai.GenerativeModel('gemini-1.5-pro-latest')
 
-
 # --- Helper Function for PDF to Images ---
-def pdf_to_images(pdf_file):
-    """Converts a PDF file to a list of PIL Images."""
+@st.cache_data # Use caching to avoid re-converting the same PDF
+def pdf_to_images(pdf_bytes):
+    """Converts a PDF file's bytes to a list of PIL Images."""
     try:
-        pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
+        pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
         images = []
         for page_num in range(len(pdf_document)):
             page = pdf_document.load_page(page_num)
-            # Increase resolution for better OCR quality
             pix = page.get_pixmap(dpi=300)
             img_bytes = pix.tobytes("png")
             image = Image.open(io.BytesIO(img_bytes))
@@ -52,10 +51,8 @@ def pdf_to_images(pdf_file):
         st.error(f"Fehler bei der Konvertierung der PDF-Datei: {e}")
         return []
 
-
 # --- Streamlit App Interface ---
-st.set_page_config(page_title="Fernuni Exam Solver", layout="wide")
-st.title("Koifox Bot 3 - Gemini 2.5 Pro")
+st.title("Koifox Bot 3 - Gemini 1.5 Pro")
 st.write("Lade die Aufgabe hoch.")
 
 # --- Sidebar for Inputs ---
@@ -73,42 +70,34 @@ col1, col2 = st.columns(2)
 with col1:
     st.header("Hochgeladenes Dokument")
     if uploaded_file:
+        file_bytes = uploaded_file.getvalue()
         if uploaded_file.type == "application/pdf":
             with st.spinner("PDF wird in Bild umgewandelt..."):
-                images = pdf_to_images(uploaded_file)
+                # Pass the file bytes to the function
+                images = pdf_to_images(file_bytes)
                 if images:
-                    # Store images in session state to avoid reprocessing
                     st.session_state.images = images
-                    st.image(images, caption=[f"Seite {i+1}" for i in range(len(images))], use_column_width=True)
+                    # FIX: Replaced use_column_width with use_container_width
+                    st.image(images, caption=[f"Seite {i+1}" for i in range(len(images))], use_container_width=True)
         else:
             try:
-                image = Image.open(uploaded_file)
-                # Store image in session state
+                image = Image.open(io.BytesIO(file_bytes))
                 st.session_state.images = [image]
-                st.image(image, caption="Hochgeladenes Bild", use_column_width=True)
+                # FIX: Replaced use_column_width with use_container_width
+                st.image(image, caption="Hochgeladenes Bild", use_container_width=True)
             except Exception as e:
                 st.error(f"Fehler beim Öffnen der Bilddatei: {e}")
 
 with col2:
     st.header("Lösung")
-    if solve_button and uploaded_file:
+    if solve_button:
         if 'images' in st.session_state and st.session_state.images:
             with st.spinner("Gemini analysiert und löst die Aufgaben..."):
                 try:
-                    # Prepare the content for the API call
-                    # The first part is the fixed prompt, followed by the image(s)
                     prompt_parts = [EXPERT_PROMPT] + st.session_state.images
-
-                    # Call the Gemini API
                     response = model.generate_content(prompt_parts)
-
-                    # Display the response
                     st.markdown(response.text)
-
                 except Exception as e:
                     st.error(f"Ein Fehler bei der Kommunikation mit der Gemini API ist aufgetreten: {e}")
         else:
-             st.warning("Die Datei konnte nicht verarbeitet werden. Bitte laden Sie sie erneut hoch.")
-
-    elif solve_button:
-        st.warning("Bitte laden Sie zuerst eine Klausurdatei hoch.")
+             st.warning("Bitte laden Sie zuerst eine Datei hoch oder die Datei konnte nicht verarbeitet werden.")
