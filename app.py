@@ -11,9 +11,9 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 
 # --- SEITE EINRICHTEN ---
-st.set_page_config(layout="wide", page_title="Koifox-Bot 4.3", page_icon="🦊")
-st.title("🦊 Koifox-Bot 3: Multi-Experten-Validierung")
-st.markdown("Gemini 2.5 Pro, GPT o3 & Claude Opus 4.1 zur Kreuzvalidierung")
+st.set_page_config(layout="wide", page_title="Koifox-Bot 4.5", page_icon="🦊")
+st.title("🦊 Koifox-Bot 4.5: Multi-Experten-Validierung")
+st.markdown("Ein Bot, der Gemini 2.5 Pro, GPT o3 und Claude Opus 4.1 zur Kreuzvalidierung von Klausurlösungen nutzt.")
 
 # --- API CLIENT INITIALISIERUNG ---
 try:
@@ -22,7 +22,7 @@ try:
     anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
     GEMINI_MODEL_NAME = "gemini-1.5-pro-latest" 
-    GPT_MODEL_NAME = "o3"
+    GPT_MODEL_NAME = "o3" # Der Name des Modells als String
     CLAUDE_MODEL_NAME = "claude-opus-4-1-20250805"
     
     gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -86,21 +86,28 @@ def call_gemini(image_list):
     except Exception as e:
         return f"Fehler bei Gemini API: {e}"
 
-# KORRIGIERT: Die Erstellung der 'messages'-Liste wurde zur besseren Lesbarkeit und zur Vermeidung von Syntaxfehlern umstrukturiert.
 def call_gpt(base64_image_list):
     content = [{"type": "text", "text": EXPERT_PROMPT}]
     for b64_img in base64_image_list:
-        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}"}})
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}", "detail": "high"}})
     
     messages = [{"role": "user", "content": content}]
     
     try:
-        response = openai_client.chat.completions.create(model=o3, messages=messages, max_completion_tokens=4000)
-        return response.choices[0].message.content
+        # KORRIGIERT: Hier wird jetzt die Variable GPT_MODEL_NAME verwendet, die den String "o3" enthält.
+        response = openai_client.chat.completions.create(
+            model=GPT_MODEL_NAME, 
+            messages=messages, 
+            max_completion_tokens=4000,
+            timeout=30.0
+        )
+        if response.choices and response.choices[0].message and response.choices[0].message.content:
+            return response.choices[0].message.content
+        else:
+            return "Fehler bei OpenAI API: Das Modell hat eine leere Antwort zurückgegeben."
     except Exception as e:
-        return f"Fehler bei OpenAI API: {e}"
+        return f"Fehler bei OpenAI API: {str(e)}"
 
-# KORRIGIERT: Auch hier wurde die 'messages'-Liste zur besseren Lesbarkeit umstrukturiert.
 def call_claude(base64_image_list):
     content = [{"type": "text", "text": EXPERT_PROMPT}]
     for b64_img in base64_image_list:
