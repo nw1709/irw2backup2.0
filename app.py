@@ -1,29 +1,29 @@
 import streamlit as st
 import google.generativeai as genai
-from openai import OpenAI, OpenAIError
+from openai import OpenAI
 from anthropic import Anthropic
 from PIL import Image
-import logging
 import fitz  # PyMuPDF
 import io
-import os
 import re
 import base64
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 
 # --- SEITE EINRICHTEN ---
-st.set_page_config(layout="wide", page_title="Koifox-Bot 5.0 (Debatte)", page_icon="🦊")
-st.title("🦊 Koifox-Bot 5.0: Experten-Panel mit Debatten-Runde")
+st.set_page_config(layout="wide", page_title="Koifox-Bot 5.2 (Final)", page_icon="🦊")
+st.title("🦊 Koifox-Bot 5.2: Experten-Panel mit Debatten-Runde")
 st.markdown("Ein Bot, der bei Uneinigkeit automatisch eine Debatte zwischen Gemini, GPT und Claude startet, um eine finale Lösung zu finden.")
 
 # --- API CLIENT INITIALISIERUNG ---
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    openai_client = OpenAI(api_key=st.secrets["openai_key"])
+    openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
     anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
+    # Die korrekten Modellnamen als STRINGS (in Anführungszeichen)
     GEMINI_MODEL_NAME = "gemini-1.5-pro-latest" 
+    GPT_MODEL_NAME = "o3"
     CLAUDE_MODEL_NAME = "claude-opus-4-1-20250805"
     
     gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -32,28 +32,8 @@ except (KeyError, Exception) as e:
     st.error(f"Fehler bei der Initialisierung der API-Clients. Bitte prüfen Sie Ihre API-Keys in den Streamlit Secrets. Fehler: {e}")
     st.stop()
 
-# --- API Key Validation ---
-def validate_keys():
-    required_keys = {
-        'openai_key': ('sk-', "OpenAI")
-    }
-    missing = []
-    invalid = []
-    
-    for key, (prefix, name) in required_keys.items():
-        if key not in st.secrets:
-            missing.append(name)
-        elif not st.secrets[key].startswith(prefix):
-            invalid.append(name)
-    
-    if missing or invalid:
-        st.error(f"API Key Problem: Missing {', '.join(missing)} | Invalid {', '.join(invalid)}")
-        st.stop()
 
-validate_keys()
-
-
-# --- PROMPTS ---
+# --- PROMPTS (Vollständig) ---
 EXPERT_PROMPT = """
 Sie sind ein deutscher Professor für 'Internes Rechnungswesen' (Kurs 31031) an der Fernuniversität Hagen mit dem Ziel, Klausuraufgaben mit 100%iger Genauigkeit zu lösen. Ihre Methodik muss exakt dem entscheidungsorientierten deutschen Controlling-Ansatz entsprechen, wie er in den Kursmaterialien der Fernuni Hagen gelehrt wird.
 
@@ -69,7 +49,6 @@ Begründung: [Ein einzelner, prägnanter Satz, der die Herleitung auf den Punkt 
 **Selbstprüfung (KRITISCH)**: Bevor Sie Ihre Antwort ausgeben, überprüfen Sie Ihr Ergebnis nochmals anhand der Daten aus der Aufgabenstellung. Stellen Sie absolut sicher, dass es zu 100% den Standards der Fernuni Hagen entspricht.
 """
 
-# NEU: Prompt-Vorlage für die Debatten-Runde
 DEBATE_PROMPT_TEMPLATE = """
 Sie sind ein Experte für deutsches Rechnungswesen in einer Expertenrunde. Ihre erste Analyse einer Aufgabe führte zu einem Ergebnis, aber Ihre Kollegen sind zu anderen Schlüssen gekommen. Dies ist Ihre Chance zur Neubewertung.
 
@@ -116,11 +95,12 @@ def image_to_base64(pil_image):
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 def parse_solution(text):
-    pattern = re.compile(r"Aufgabe\s*\[?(\d+)\]?:\s*(.*?)\s*\nBegründung:\s*(.*)", re.IGNORECASE)
+    if not isinstance(text, str): return {}
+    pattern = re.compile(r"Aufgabe\s*\[?(\d+)\]?:\s*(.*?)\s*\nBegründung:\s*(.*)", re.IGNORECASE | re.DOTALL)
     matches = pattern.findall(text)
     return {match[0]: {"answer": match[1].strip(), "reason": match[2].strip()} for match in matches}
 
-# --- API-AUFRUFFUNKTIONEN (Jetzt mit "prompt" als Argument) ---
+# --- API-AUFRUFFUNKTIONEN ---
 def call_gemini(prompt, image_list):
     try:
         response = gemini_model.generate_content([prompt] + image_list)
@@ -134,7 +114,8 @@ def call_gpt(prompt, base64_image_list):
         content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}", "detail": "high"}})
     messages = [{"role": "user", "content": content}]
     try:
-        response = openai_client.chat.completions.create(model=o3, messages=messages, max_completion_tokens=4000)
+        # ENDGÜLTIGE KORREKTUR: Die Variable `GPT_MODEL_NAME` wird hier korrekt verwendet.
+        response = openai_client.chat.completions.create(model=GPT_MODEL_NAME, messages=messages, max_completion_tokens=1500, timeout=45.0)
         return response.choices[0].message.content if response.choices and response.choices[0].message else "Leere Antwort von GPT."
     except Exception as e:
         return f"Fehler bei OpenAI API: {str(e)}"
@@ -201,78 +182,69 @@ with col2:
             
             for task_num in all_task_numbers:
                 st.markdown(f"--- \n#### Analyse für Aufgabe {task_num}")
-                sols = {"Gemini": gemini_sols.get(task_num), "GPT": gpt_sols.get(task_num), "Claude": claude_sols.get(task_num)}
-                answers = [s['answer'] for s in sols.values() if s and 'answer' in s]
+                sols_r1 = {"Gemini": gemini_sols.get(task_num), "GPT": gpt_sols.get(task_num), "Claude": claude_sols.get(task_num)}
+                answers_r1 = [s['answer'] for s in sols_r1.values() if s and 'answer' in s]
                 
-                if not answers:
+                if not answers_r1:
                     st.warning(f"Kein Modell hat eine auswertbare Antwort für Aufgabe {task_num} geliefert.")
                     continue
                 
-                answer_counts = Counter(answers)
-                most_common = answer_counts.most_common(1)[0]
+                answer_counts_r1 = Counter(answers_r1)
+                most_common_r1 = answer_counts_r1.most_common(1)[0]
 
-                if most_common[1] >= 2:
-                    final_answer = most_common[0]
-                    final_reason = next((s['reason'] for s in sols.values() if s and s.get('answer') == final_answer), "Keine Begründung gefunden.")
+                if most_common_r1[1] >= 2:
+                    final_answer = most_common_r1[0]
+                    final_reason = next((s['reason'] for s in sols_r1.values() if s and s.get('answer') == final_answer), "Keine Begründung gefunden.")
                     st.success(f"**Konsens-Lösung (Runde 1): {final_answer}**")
                     st.info(f"**Begründung:** {final_reason}")
                 else:
                     st.warning(f"**Kein Konsens in Runde 1.** Die Experten sind sich uneinig. Starte automatische Debatten-Runde...")
                     
-                    # --- DEBATTEN-RUNDE LOGIK ---
-                    with st.spinner(f"Debatte für Aufgabe {task_num} läuft... Die Experten bewerten die Meinungen der anderen."):
-                        # Erstelle die individuellen Debatten-Prompts
+                    with st.spinner(f"Debatte für Aufgabe {task_num} läuft..."):
                         prompts = {}
-                        model_names = list(sols.keys())
+                        model_names = list(sols_r1.keys())
                         for i, name in enumerate(model_names):
-                            # Stelle sicher, dass das Modell eine Antwort hatte, um teilzunehmen
-                            if not sols[name]: continue
-
-                            # Sammle die Antworten der ANDEREN Modelle
-                            other_answers = [sols[other_name] for j, other_name in enumerate(model_names) if i != j and sols[other_name]]
-                            
+                            if not sols_r1[name]: continue
+                            others = [sols_r1[other] for j, other in enumerate(model_names) if i != j and sols_r1[other]]
                             prompts[name] = DEBATE_PROMPT_TEMPLATE.format(
-                                task_num=task_num,
-                                your_answer=sols[name]['answer'],
-                                your_reason=sols[name]['reason'],
-                                other_answer_1=other_answers[0]['answer'] if len(other_answers) > 0 else "N/A",
-                                other_reason_1=other_answers[0]['reason'] if len(other_answers) > 0 else "N/A",
-                                other_answer_2=other_answers[1]['answer'] if len(other_answers) > 1 else "N/A",
-                                other_reason_2=other_answers[1]['reason'] if len(other_answers) > 1 else "N/A"
+                                task_num=task_num, your_answer=sols_r1[name]['answer'], your_reason=sols_r1[name]['reason'],
+                                other_answer_1=others[0]['answer'] if len(others) > 0 else "N/A", other_reason_1=others[0]['reason'] if len(others) > 0 else "N/A",
+                                other_answer_2=others[1]['answer'] if len(others) > 1 else "N/A", other_reason_2=others[1]['reason'] if len(others) > 1 else "N/A"
                             )
 
-                        # Starte die zweite Runde der API-Aufrufe
                         with ThreadPoolExecutor() as executor:
-                            future_gemini_debate = executor.submit(call_gemini, prompts.get("Gemini", ""), pil_images)
-                            future_gpt_debate = executor.submit(call_gpt, prompts.get("GPT", ""), base64_images)
-                            future_claude_debate = executor.submit(call_claude, prompts.get("Claude", ""), base64_images)
-                            gemini_final_raw, gpt_final_raw, claude_final_raw = future_gemini_debate.result(), future_gpt_debate.result(), future_claude_debate.result()
+                            future_g_d = executor.submit(call_gemini, prompts.get("Gemini", EXPERT_PROMPT), pil_images)
+                            future_o_d = executor.submit(call_gpt, prompts.get("GPT", EXPERT_PROMPT), base64_images)
+                            future_c_d = executor.submit(call_claude, prompts.get("Claude", EXPERT_PROMPT), base64_images)
+                            gemini_final_raw, gpt_final_raw, claude_final_raw = future_g_d.result(), future_o_d.result(), future_c_d.result()
                         
                         st.subheader(f"Runde 2: Finale Antworten nach Debatte (Aufgabe {task_num})")
-                        with st.expander("Finale Antwort von Gemini"): st.markdown(gemini_final_raw)
-                        with st.expander("Finale Antwort von GPT"): st.markdown(gpt_final_raw)
-                        with st.expander("Finale Antwort von Claude"): st.markdown(claude_final_raw)
+                        with st.expander("Finale Roh-Antwort von Gemini"): st.markdown(gemini_final_raw)
+                        with st.expander("Finale Roh-Antwort von GPT"): st.markdown(gpt_final_raw)
+                        with st.expander("Finale Roh-Antwort von Claude"): st.markdown(claude_final_raw)
                         
-                        # Finale Auswertung nach der Debatte
-                        final_sols = {
-                            "Gemini": parse_solution(gemini_final_raw).get(task_num),
-                            "GPT": parse_solution(gpt_final_raw).get(task_num),
-                            "Claude": parse_solution(claude_final_raw).get(task_num)
-                        }
-                        final_answers = [s['answer'] for s in final_sols.values() if s and 'answer' in s]
-                        final_answer_counts = Counter(final_answers)
-                        most_common_final = final_answer_counts.most_common(1)[0] if final_answers else (None, 0)
+                        final_sols_raw = {"Gemini": gemini_final_raw, "GPT": gpt_final_raw, "Claude": claude_final_raw}
+                        final_sols_parsed = {name: parse_solution(text).get(task_num) for name, text in final_sols_raw.items()}
+                        
+                        final_answers = [s['answer'] for s in final_sols_parsed.values() if s and 'answer' in s]
+                        final_counts = Counter(final_answers)
+                        most_common_final = final_counts.most_common(1)[0] if final_answers else (None, 0)
                         
                         if most_common_final[1] >= 2:
                             final_answer = most_common_final[0]
-                            final_reason = next((s['reason'] for s in final_sols.values() if s and s.get('answer') == final_answer), "Keine Begründung gefunden.")
+                            final_reason = next((s['reason'] for s in final_sols_parsed.values() if s and s.get('answer') == final_answer), "N/A.")
                             st.success(f"**Konsens nach Debatte: {final_answer}**")
                             st.info(f"**Finale Begründung:** {final_reason}")
                         else:
                             st.error(f"**Kein Konsens nach Debatte für Aufgabe {task_num}.**")
                             st.write("Die Experten konnten sich nicht einigen. Hier sind die finalen, unterschiedlichen Meinungen:")
-                            for name, sol in final_sols.items():
+                            
+                            # ENDGÜLTIGE KORREKTUR DER ANZEIGE:
+                            for name, sol in final_sols_parsed.items():
                                 if sol:
                                     st.markdown(f"**{name}:** `{sol['answer']}` \n- *Begründung:* {sol['reason']}")
+                                else:
+                                    st.markdown(f"**{name}:**")
+                                    st.code(f"Konnte Antwort nicht analysieren.\nRohtext:\n{final_sols_raw[name]}", language=None)
         else:
-            st.warning("Bitte laden Sie zuerst eine Datei hoch, damit die Experten sie analysieren können.")
+            st.warning("Bitte laden Sie zuerst eine Datei hoch.")
