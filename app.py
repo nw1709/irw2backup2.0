@@ -12,7 +12,7 @@ from collections import Counter
 
 # --- SEITE EINRICHTEN ---
 st.set_page_config(layout="wide", page_title="Koifox-Bot 4.1", page_icon="🦊")
-st.title("🦊 Koifox-Bot 1: Multi-Experten-Validierung")
+st.title("🦊 Koifox-Bot 3: Multi-Experten-Validierung")
 st.markdown("Gemini 2.5 Pro, GPT o3 & Claude Opus 4.1 zur Kreuzvalidierung")
 
 # --- API CLIENT INITIALISIERUNG ---
