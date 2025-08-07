@@ -22,7 +22,7 @@ try:
     anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
     GEMINI_MODEL_NAME = "gemini-1.5-pro-latest" 
-    GPT_MODEL_NAME = "o3-2025-04-16"
+    GPT_MODEL_NAME = "o3"
     CLAUDE_MODEL_NAME = "claude-opus-4-1-20250805"
     
     gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -95,7 +95,7 @@ def call_gpt(base64_image_list):
     messages = [{"role": "user", "content": content}]
     
     try:
-        response = openai_client.chat.completions.create(model=GPT_MODEL_NAME, messages=messages, max_completion_tokens=1500)
+        response = openai_client.chat.completions.create(model=o3, messages=messages, max_completion_tokens=4000)
         return response.choices[0].message.content
     except Exception as e:
         return f"Fehler bei OpenAI API: {e}"
