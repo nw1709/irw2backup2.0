@@ -24,7 +24,7 @@ try:
     GEMINI_MODEL_NAME = "gemini-1.5-pro-latest" 
     # Dein gewünschter Modellname wird wie gefordert verwendet.
     GPT_MODEL_NAME = "o3"
-    CLAUDE_MODEL_NAME = "claude-4-1-opus-20250805" 
+    CLAUDE_MODEL_NAME = "claude-opus-4-1-20250805" 
     
     gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
 
@@ -35,7 +35,7 @@ except (KeyError, Exception) as e:
 # --- PROMPTS ---
 OCR_PROMPT = "Extrahiere den gesamten Text aus dem beigefügten Bild so exakt wie möglich. Gib NUR den reinen Text zurück, ohne jegliche zusätzliche Kommentare, Einleitungen oder Formatierungen."
 
-EXPERT_PROMPT_GENERAL = "Sie sind ein deutscher Professor für 'Internes Rechnungswesen' an der Fernuniversität Hagen. Lösen Sie die Aufgaben auf dem Bild mit 100%iger Genauigkeit. Formatieren Sie die Antwort EXAKT so:\nAufgabe [Nr]: [Antwort]\nBegründung: [Ein kurzer Satz]"
+EXPERT_PROMPT_GENERAL = "Sie sind ein deutscher Professor für 'Internes Rechnungswesen (31031)' an der Fernuniversität Hagen. Lösen Sie die Aufgaben auf dem Bild mit absolut 100%iger Richtigkeit und strikt nach der Methodik der Fernuniversität Hagen. Formatieren Sie die Antwort EXAKT so:\nAufgabe [Nr]: [Antwort]\nBegründung: [Ein kurzer Satz]"
 
 SYSTEM_PROMPT_O3 = "You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy. You MUST provide answers in this EXACT format for EVERY task found:\n\nAufgabe [Nr]: [Final answer]\nBegründung: [1 brief but consise sentence in German]\n\nNO OTHER FORMAT IS ACCEPTABLE."
 USER_PROMPT_O3 = "Analysiere das folgende Bild. Extrahiere zuerst den gesamten Text und alle sichtbaren Daten. Löse DANN basierend auf diesen Daten die Aufgabe(n). Halte dich strikt an das in deiner System-Rolle definierte Antwortformat."
