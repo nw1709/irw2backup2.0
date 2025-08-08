@@ -22,10 +22,8 @@ try:
     anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
     GEMINI_MODEL_NAME = "gemini-1.5-pro-latest" 
-    # Dein gewünschter Modellname wird wie gefordert verwendet.
     GPT_MODEL_NAME = "o3"
-    # Hinweis: Der Claude-Modellname wurde auf eine aktuelle, funktionierende Version gesetzt.
-    CLAUDE_MODEL_NAME = "claude-3-opus-20240229" 
+    CLAUDE_MODEL_NAME = "claude-4-1-opus-20250805" 
     
     gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
 
@@ -76,7 +74,7 @@ def call_google(prompt, images_base64):
 def call_anthropic(prompt, images_base64):
     content = [{"type": "text", "text": prompt}] + [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}} for b64 in images_base64]
     try:
-        response = anthropic_client.messages.create(model=CLAUDE_MODEL_NAME, max_tokens=2000, messages=[{"role": "user", "content": content}], timeout=90.0)
+        response = anthropic_client.messages.create(model=CLAUDE_MODEL_NAME, max_tokens=4000, messages=[{"role": "user", "content": content}], timeout=90.0)
         return response.content[0].text if response.content else "Leere Antwort."
     except Exception as e:
         return f"Fehler bei Anthropic API: {str(e)}"
@@ -86,7 +84,7 @@ def call_gpt_o3(system_prompt, user_prompt, images_base64):
     messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": content}]
     try:
         # KORREKTUR: Der Parameter 'max_completion_tokens' wurde zum korrekten 'max_tokens' geändert.
-        response = openai_client.chat.completions.create(model=GPT_MODEL_NAME, messages=messages, max_tokens=2000, timeout=90.0)
+        response = openai_client.chat.completions.create(model=GPT_MODEL_NAME, messages=messages, max_completion_tokens=4000, timeout=90.0)
         return response.choices[0].message.content if response.choices and response.choices[0].message else "Leere Antwort."
     except Exception as e:
         return f"Fehler bei OpenAI API: {str(e)}"
