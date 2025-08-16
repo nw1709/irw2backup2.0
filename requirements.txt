@@ -4,4 +4,4 @@ openai
 anthropic
 PyMuPDF
 Pillow
-pip install google-genai
+google-genai
