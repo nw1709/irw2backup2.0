@@ -5,6 +5,7 @@ import base64
 import os
 from google import genai
 from google.genai import types
+import pip install 
 
 
 def generate():
