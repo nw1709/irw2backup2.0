@@ -10,7 +10,7 @@ import pillow_heif
 # --- VORBEREITUNG ---
 # (Meta-Tags, Page-Config, Titel, etc. bleiben unverändert)
 st.markdown(f'''...''', unsafe_allow_html=True) # Gekürzt zur Übersichtlichkeit
-st.set_page_config(layout="centered", page_title="KFB1", page_icon="🦊")
+st.set_page_config(layout="centered", page_title="KFB3", page_icon="🦊")
 st.title("🦊 Koifox-Bot 3 ")
 st.write("made with deep minimal & love by fox 🚀")
 
