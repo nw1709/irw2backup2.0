@@ -3,6 +3,8 @@ import google.generativeai as genai
 from PIL import Image, ImageEnhance
 import logging
 import io
+import re
+import base64
 import pdf2image
 import os
 import pillow_heif
@@ -22,6 +24,17 @@ st.set_page_config(layout="centered", page_title="KFB3", page_icon="🦊")
 st.title("🦊 Koifox-Bot 3 ")
 st.write("made with deep minimal & love by fox 🚀")
 
+# --- API CLIENT INITIALISIERUNG ---
+try:
+    genai.configure(api_key=st.secrets["google_api_key"])
+    GEMINI_MODEL_NAME = "gemini-2.5-pro-latest" 
+    # Gemini-Modellobjekt initialisieren
+    gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+
+except (KeyError, Exception) as e:
+    st.error(f"Fehler bei der Initialisierung der API-Clients. Bitte prüfen Sie Ihre API-Keys in den Streamlit Secrets. Fehler: {e}")
+    st.stop()
+
 # --- Logger & API Key Setup ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,11 +45,6 @@ def validate_keys():
         st.stop()
 validate_keys()
 
-try:
-    genai.configure(api_key=st.secrets["google_api_key"])
-except Exception as e:
-    st.error(f"❌ Fehler bei der Initialisierung des Gemini-Clients: {str(e)}")
-    st.stop()
 
 # --- BILDVERARBEITUNG & OPTIMIERUNG ---
 def process_and_prepare_image(uploaded_file):
@@ -69,7 +77,7 @@ def process_and_prepare_image(uploaded_file):
 # --- Gemini 2.5 Pro Solver ---
 def solve_with_gemini(image):
     try:
-        logger.info("Bereite Anfrage für Gemini 1.5 Pro vor")
+        logger.info("Bereite Anfrage für Gemini 2.5 Pro vor")
         
         generation_config = {
             "temperature": 0.1,
@@ -86,11 +94,17 @@ def solve_with_gemini(image):
 
         # HIER IST DER KORREKTE, VON DIR GEWÜNSCHTE MODELLNAME
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-pro-001", # Wie von dir gewünscht: Das leistungsstärkste Modell
+            model="gemini-2.5-pro-001",
             generation_config=generation_config,
             safety_settings=safety_settings
         )
-        
+
+        from google import genai
+
+client = genai.Client()
+
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
         system_prompt = """
         [Persona & Wissensbasis]
         Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
