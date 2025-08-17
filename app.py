@@ -69,7 +69,7 @@ def process_and_prepare_image(uploaded_file):
 # --- Gemini 2.5 Pro Solver ---
 def solve_with_gemini(image):
     try:
-        logger.info("Bereite Anfrage für Gemini 2.5 Pro vor")
+        logger.info("Bereite Anfrage für Gemini 1.5 Pro vor")
         
         generation_config = {
             "temperature": 0.1,
@@ -86,7 +86,7 @@ def solve_with_gemini(image):
 
         # HIER IST DER KORREKTE, VON DIR GEWÜNSCHTE MODELLNAME
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-pro", # Wie von dir gewünscht: Das leistungsstärkste Modell
+            model_name="gemini-1.5-pro-001", # Wie von dir gewünscht: Das leistungsstärkste Modell
             generation_config=generation_config,
             safety_settings=safety_settings
         )
