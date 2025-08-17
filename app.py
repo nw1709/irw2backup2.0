@@ -106,7 +106,10 @@ def solve_with_gemini(image):
         Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode.]
         """
 
-        user_prompt = "Lies die Informationen aus dem bereitgestellten Bild. Löse anschließend die darauf sichtbare Aufgabe gemäß deiner Anweisungen und halte dich strikt an das geforderte Ausgabeformat."
+        user_prompt = "Scanne das gesamte Bild von oben nach unten. Identifiziere ALLE Aufgaben (z.B. Aufgabe 1, Aufgabe 2, etc.).
+        Löse anschließend JEDE EINZELNE dieser Aufgaben der Reihe nach.
+        Zeige bei Berechnungen kurz den entscheidenden Rechenschritt oder die verwendete Formel.
+        Halte dich strikt an deine Systemanweisungen und das geforderte Ausgabeformat für JEDE Aufgabe."
         
         prompt_parts = [system_prompt, user_prompt, image]
         
