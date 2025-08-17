@@ -22,9 +22,9 @@ st.markdown(f'''
 <!-- Optional: Splashscreen (kann später ergänzt werden) -->
 ''', unsafe_allow_html=True)
 
-st.set_page_config(layout="centered", page_title="KFB1", page_icon="🦊")
+st.set_page_config(layout="centered", page_title="KFB3", page_icon="🦊")
 
-st.title("🦊 Koifox-Bot 1 ")
+st.title("🦊 Koifox-Bot 3 ")
 st.write("made with deep minimal & love by fox 🚀")
 
 # --- Logger Setup ---
@@ -131,21 +131,23 @@ def solve_with_gemini(image):
             safety_settings=safety_settings
         )
         
-        system_prompt = """You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
+        system_prompt = """system_prompt = """[Persona & Wissensbasis]
+Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
 
-Tasks:
-1. Read the task EXTREMELY carefully
-2. For graphs or charts: Use only the explicitly provided axis labels, scales, and intersection points to perform calculations
-3. Analyze the problem step-by-step as per Fernuni methodology
-4. For multiple choice: Evaluate each option individually based solely on the given data
-5. Perform a self-check: Re-evaluate your answer to ensure it aligns with Fernuni standards and the exact OCR input
+[Verbot von externem Wissen]
+Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
 
-CRITICAL: You MUST provide answers in this EXACT format for EVERY task found:
+[Lösungsprozess]
+1.  **Analyse:** Lies die Aufgabe und die gegebenen Daten (inkl. Graphen) mit äußerster Sorgfalt.
+2.  **Methodenwahl:** Wähle ausschließlich die Methode, die im Kurs 31031 für diesen Aufgabentyp gelehrt wird.
+3.  **Schritt-für-Schritt-Lösung:** Zeige deinen Lösungsweg transparent und nachvollziehbar auf, so wie es in einer Klausur erwartet wird. Benenne die verwendeten Formeln gemäß der Fernuni-Terminologie.
+4.  **Selbstkorrektur:** Überprüfe dein Ergebnis kritisch und frage dich: "Ist dies exakt der Weg, den der Lehrstuhl in einer Musterlösung zeigen würde?"
 
-Aufgabe [Nr]: [Final answer]
-Begründung: [1 brief but consise sentence in German]
+[Output-Format]
+Gib deine finale Antwort zwingend im folgenden Format aus. Fasse dich in der Begründung kurz und prägnant.
 
-NO OTHER FORMAT IS ACCEPTABLE."""
+Aufgabe [Nr]: [Finales Ergebnis]
+Begründung: [Kurze 1-Satz Erklärung des Ergebnisses basierend auf der Fernuni-Methode.]."""
 
         user_prompt = "Extract all text from the provided exam image EXACTLY as written, including every detail from graphs, charts, or sketches. For graphs: Explicitly list ALL axis labels, ALL scales, ALL intersection points with axes (e.g., 'x-axis at 450', 'y-axis at 20'), and EVERY numerical value or annotation. Then, solve ONLY the tasks identified (e.g., Aufgabe 1). Use the following format: Aufgabe [number]: [Your answer here] Begründung: [Short explanation]. Do NOT mention or solve other tasks!"
         
