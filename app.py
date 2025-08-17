@@ -1,10 +1,13 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+from PIL import Image, ImageEnhance
 import logging
 import io
 import pdf2image
 import os
+import pillow_heif
+
+# --- VORBEREITUNG ---
 
 # Meta-Tags und Icon für iOS Homescreen Shortcut
 st.markdown(f'''
@@ -21,7 +24,7 @@ st.markdown(f'''
 
 st.set_page_config(layout="centered", page_title="KFB1", page_icon="🦊")
 
-st.title("🦊 Koifox-Bot 3 ")
+st.title("🦊 Koifox-Bot 1 ")
 st.write("made with deep minimal & love by fox 🚀")
 
 # --- Logger Setup ---
@@ -36,7 +39,7 @@ def validate_keys():
 
 validate_keys()
 
-# --- API Client ---
+# --- API Client Initialisierung ---
 try:
     genai.configure(api_key=st.secrets["google_api_key"])
 except Exception as e:
@@ -45,57 +48,76 @@ except Exception as e:
     st.stop()
 
 
-# --- Datei in Bild konvertieren ---
-def convert_to_image(uploaded_file):
+# --- BILDVERARBEITUNG & OPTIMIERUNG ---
+def process_and_prepare_image(uploaded_file):
+    """
+    Nimmt eine hochgeladene Datei (Bild oder PDF) entgegen, konvertiert sie
+    in ein optimiertes Bildobjekt für die KI-Analyse.
+    """
     try:
+        # HEIC-Unterstützung für iPhone-Bilder aktivieren
+        pillow_heif.register_heif_opener()
+
         file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-        logger.info(f"Processing file with extension: {file_extension}")
+        logger.info(f"Verarbeite Datei mit der Endung: {file_extension}")
 
-        if file_extension in ['.png', '.jpeg', '.jpg', '.gif', '.webp']:
+        if file_extension in ['.png', '.jpeg', '.jpg', '.gif', '.webp', '.heic']:
             image = Image.open(uploaded_file)
-            # Konvertiere zu RGB, falls es einen Alpha-Kanal gibt (z.B. bei PNG)
-            if image.mode in ("RGBA", "P"):
-                 image = image.convert("RGB")
-            logger.info(f"Loaded image with format: {image.format}")
-            return image
-
+        
         elif file_extension == '.pdf':
             try:
                 from pdf2image import convert_from_bytes
             except ImportError:
                 st.error("📄 PDF-Unterstützung fehlt: Bitte `pdf2image` in requirements.txt **und** `poppler-utils` in packages.txt hinzufügen (Streamlit Cloud) oder lokal Poppler installieren.")
                 st.stop()
-
-            # erste Seite konvertieren (falls mehrere Seiten, kannst du iterieren)
+            
+            # Konvertiere die erste Seite des PDFs
             pages = convert_from_bytes(uploaded_file.read(), fmt='jpeg', dpi=300)
             if not pages:
                 st.error("❌ Konnte keine Seite aus dem PDF extrahieren.")
-                st.stop()
-            image = pages[0].convert('RGB')
-            logger.info("Converted first PDF page to image.")
-            return image
-
+                return None
+            image = pages[0]
         else:
-            st.error(f"❌ Nicht unterstütztes Format: {file_extension}. Bitte lade PNG, JPEG, GIF, WebP oder PDF hoch.")
-            st.stop()
+            st.error(f"❌ Nicht unterstütztes Format: {file_extension}.")
+            return None
+
+        # --- Automatische Bildoptimierungs-Pipeline ---
+
+        # 1. Nach RGB konvertieren, um Konsistenz für alle Formate zu gewährleisten
+        if image.mode in ("RGBA", "P", "LA"):
+            image = image.convert("RGB")
+            
+        # 2. In Graustufen umwandeln, um den Fokus auf Text und Formen zu legen
+        image_gray = image.convert('L')
+        
+        # 3. Kontrast erhöhen, um den Text vom Hintergrund abzuheben
+        enhancer = ImageEnhance.Contrast(image_gray)
+        image_enhanced = enhancer.enhance(1.5) # Faktor 1.5 ist ein guter Startwert
+
+        # 4. Zurück nach RGB konvertieren, da die meisten APIs dieses Format erwarten
+        final_image = image_enhanced.convert('RGB')
+        
+        logger.info("Bild erfolgreich verarbeitet und für die KI optimiert.")
+        return final_image
 
     except Exception as e:
-        logger.error(f"Error converting file to image: {str(e)}")
-        st.error(f"❌ Fehler bei der Konvertierung: {str(e)}")
+        logger.error(f"Fehler bei der Bildverarbeitung: {str(e)}")
+        st.error(f"❌ Fehler bei der Bildverarbeitung: {str(e)}")
         return None
 
-# --- Gemini 2.5 Pro Solver mit Bildverarbeitung ---
+# --- Gemini 2.5 Pro Solver ---
 def solve_with_gemini(image):
+    """
+    Sendet das vorverarbeitete Bild an Gemini 2.5 Pro und erhält die Lösung.
+    """
     try:
-        logger.info("Preparing image for Gemini 2.5 Pro")
+        logger.info("Bereite Anfrage für Gemini 2.5 Pro vor")
         
-        # Konfiguration für das Generierungsmodell
         generation_config = {
             "temperature": 0.2,
-            "max_output_tokens": 65535, # Maximal möglicher Wert für Gemini 2.5 Pro. [17]
+            "max_output_tokens": 8192, # Standard-Maximum für Gemini Pro, kann angepasst werden
         }
         
-        # Sicherheits-Einstellungen (optional, aber empfohlen)
         safety_settings = [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
@@ -104,12 +126,12 @@ def solve_with_gemini(image):
         ]
 
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-pro",
+            model_name="gemini-pro-vision", # Das korrekte Modell für Bild-Input
             generation_config=generation_config,
             safety_settings=safety_settings
         )
         
-        system_instruction = """You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
+        system_prompt = """You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
 
 Tasks:
 1. Read the task EXTREMELY carefully
@@ -125,20 +147,18 @@ Begründung: [1 brief but consise sentence in German]
 
 NO OTHER FORMAT IS ACCEPTABLE."""
 
-        prompt_parts = [
-            system_instruction,
-            "Extract all text from the provided exam image EXACTLY as written, including every detail from graphs, charts, or sketches. For graphs: Explicitly list ALL axis labels, ALL scales, ALL intersection points with axes (e.g., 'x-axis at 450', 'y-axis at 20'), and EVERY numerical value or annotation. Then, solve ONLY the tasks identified (e.g., Aufgabe 1). Use the following format: Aufgabe [number]: [Your answer here] Begründung: [Short explanation]. Do NOT mention or solve other tasks!",
-            image
-        ]
+        user_prompt = "Extract all text from the provided exam image EXACTLY as written, including every detail from graphs, charts, or sketches. For graphs: Explicitly list ALL axis labels, ALL scales, ALL intersection points with axes (e.g., 'x-axis at 450', 'y-axis at 20'), and EVERY numerical value or annotation. Then, solve ONLY the tasks identified (e.g., Aufgabe 1). Use the following format: Aufgabe [number]: [Your answer here] Begründung: [Short explanation]. Do NOT mention or solve other tasks!"
         
-        logger.info("Sending request to Gemini 2.5 Pro")
+        prompt_parts = [system_prompt, user_prompt, image]
+        
+        logger.info("Sende Anfrage an Gemini...")
         response = model.generate_content(prompt_parts)
-        logger.info("Received response from Gemini 2.5 Pro")
+        logger.info("Antwort von Gemini erhalten.")
         
         return response.text
 
     except Exception as e:
-        logger.error(f"Gemini API Error: {str(e)}")
+        logger.error(f"Gemini API Fehler: {str(e)}")
         st.error(f"❌ Gemini API Fehler: {str(e)}")
         return None
 
@@ -146,25 +166,30 @@ NO OTHER FORMAT IS ACCEPTABLE."""
 # --- HAUPTINTERFACE ---
 debug_mode = st.checkbox("🔍 Debug-Modus", value=False)
 
-uploaded_file = st.file_uploader("**Klausuraufgabe hochladen...**", type=["png", "jpg", "jpeg", "gif", "webp", "pdf"])
+uploaded_file = st.file_uploader(
+    "**Klausuraufgabe hochladen...**", 
+    type=["png", "jpg", "jpeg", "gif", "webp", "pdf", "heic"]
+)
 
 if uploaded_file is not None:
     try:
-        image = convert_to_image(uploaded_file)
-        if image:
+        # Verwende die neue, optimierte Funktion
+        processed_image = process_and_prepare_image(uploaded_file)
+        
+        if processed_image:
             if "rotation" not in st.session_state:
                 st.session_state.rotation = 0
 
-            if st.button("Bild drehen"):
+            if st.button("🔄 Bild drehen"):
                 st.session_state.rotation = (st.session_state.rotation + 90) % 360
 
-            rotated_img = image.rotate(-st.session_state.rotation, expand=True)
+            rotated_img = processed_image.rotate(-st.session_state.rotation, expand=True)
 
-            st.image(rotated_img, caption=f"Verarbeitetes Bild (gedreht um {st.session_state.rotation}°)", use_container_width=True)
+            st.image(rotated_img, caption=f"Optimiertes Bild (gedreht um {st.session_state.rotation}°)", use_container_width=True)
 
             if st.button("🧮 Aufgabe(n) lösen", type="primary"):
                 st.markdown("---")
-                with st.spinner("Gemini 2.5 Pro analysiert..."):
+                with st.spinner("Gemini analysiert das Bild..."):
                     gemini_solution = solve_with_gemini(rotated_img)
 
                 if gemini_solution:
@@ -176,9 +201,9 @@ if uploaded_file is not None:
                 else:
                     st.error("❌ Keine Lösung generiert")
     except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
-        st.error(f"❌ Fehler bei der Verarbeitung: {str(e)}")
+        logger.error(f"Fehler im Hauptprozess: {str(e)}")
+        st.error(f"❌ Ein unerwarteter Fehler ist aufgetreten: {str(e)}")
 
 # Footer
 st.markdown("---")
-st.caption("Made by Fox & Koi-9 ❤️ | Google Gemini 2.5 Pro")
+st.caption("Made by Fox & Koi-9 ❤️ | Google Gemini Pro Vision")
