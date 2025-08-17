@@ -72,20 +72,21 @@ def solve_with_gemini(image):
         logger.info("Bereite Anfrage für Gemini 2.5 Pro vor")
         
         generation_config = {
-            "temperature": 0.1, # Auf 0.1 für maximale Präzision gesetzt
+            "temperature": 0.1,
             "max_output_tokens": 8192,
         }
         
+        # Die notwendige Anpassung der Sicherheits-Schwelle, um "False Positives" zu verhindern
         safety_settings = [
-    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-]
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+        ]
 
-        # KORRIGIERT: Festgelegt auf die verifizierte, stabile Version von Gemini 2.5 Pro
+        # HIER IST DER KORREKTE, VON DIR GEWÜNSCHTE MODELLNAME
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-pro",
+            model_name="gemini-2.5-pro", # Wie von dir gewünscht: Das leistungsstärkste Modell
             generation_config=generation_config,
             safety_settings=safety_settings
         )
