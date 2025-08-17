@@ -1,8 +1,7 @@
 streamlit
-
 Pillow
 pdf2image
-
+pillow-heif
 google-generativeai
 openai
 anthropic
