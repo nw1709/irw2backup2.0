@@ -1,7 +1,8 @@
 streamlit
+
+Pillow
+pdf2image
+
 google-generativeai
 openai
 anthropic
-PyMuPDF
-Pillow
-google-genai
