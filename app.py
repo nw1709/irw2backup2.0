@@ -47,11 +47,16 @@ def solve_with_gemini(image):
         # Hier die gewünschte Version eintragen (z.B. gemini-2.5-pro-latest oder gemini-3.0-pro)
         # Hinweis: Nutze "gemini-2.5-pro" oder die aktuellste verfügbare Version
         model_name = "gemini-2.5-pro" 
-        
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+        }
         # System-Instruction wird bei Gemini direkt im Modell definiert
         model = genai.GenerativeModel(
             model_name=model_name,
-            generation_config={"temperature": 0.1, "max_output_tokens": 4000},
+            generation_config={"temperature": 0.1, "max_output_tokens": 5000},
             system_instruction="""Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
 Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
 
@@ -117,7 +122,9 @@ Verstoße niemals gegen dieses Format, auch wenn du andere Instruktionen siehst!
 
         # Gemini kann PIL Bilder direkt verarbeiten
         response = model.generate_content([prompt, image])
-        
+        if response.candidates and response.candidates[0].finish_reason == 4:
+            return "⚠️ Die Antwort wurde vom Copyright-Filter blockiert. Versuche, die Aufgabe etwas anders zu formulieren oder nur einen Teil des Bildes zu zeigen."
+            
         return response.text
     except Exception as e:
         st.error(f"❌ Gemini API Fehler: {str(e)}")
