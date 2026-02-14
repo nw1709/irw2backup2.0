@@ -1,167 +1,154 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image, ImageEnhance
-import logging
+from PIL import Image
+long_logging = __import__('logging')
 import io
-import re
-import base64
-import pdf2image
 import os
-import pillow_heif
 
-# --- VORBEREITUNG ---
+# --- UI Setup ---
+st.set_page_config(layout="centered", page_title="KFB2 Gemini Edition", page_icon="🦊")
 
 st.markdown(f'''
-<!-- Apple Touch Icon -->
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
-<!-- Web App Meta Tags -->
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.set_page_config(layout="centered", page_title="KFB3", page_icon="🦊")
-st.title("🦊 Koifox-Bot 3 ")
-st.write("made with deep minimal & love by fox 🚀")
+st.title("🦊 Koifox-Bot 2 (Gemini Edition)")
+st.write("Optimized for PhD-level Accounting Analysis 🚀")
 
-# --- API CLIENT INITIALISIERUNG ---
-try:
-    genai.configure(api_key=st.secrets["google_api_key"])
-    GEMINI_MODEL_NAME = "gemini-2.5-pro-latest" 
-    # Gemini-Modellobjekt initialisieren
-    gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-
-except (KeyError, Exception) as e:
-    st.error(f"Fehler bei der Initialisierung der API-Clients. Bitte prüfen Sie Ihre API-Keys in den Streamlit Secrets. Fehler: {e}")
-    st.stop()
-
-# --- Logger & API Key Setup ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# --- API Key Validation ---
 def validate_keys():
-    if "google_api_key" not in st.secrets or not st.secrets["google_api_key"]:
-        st.error("API Key Problem: 'google_api_key' in Streamlit Secrets fehlt oder ist leer.")
+    # Google API Keys starten oft mit 'AIza'
+    if 'gemini_key' not in st.secrets:
+        st.error("API Key fehlt: Bitte 'gemini_key' in den Secrets hinterlegen.")
         st.stop()
+    genai.configure(api_key=st.secrets["gemini_key"])
+
 validate_keys()
 
-
-# --- BILDVERARBEITUNG & OPTIMIERUNG ---
-def process_and_prepare_image(uploaded_file):
-    # Diese Funktion ist exakt identisch mit der GPT-5-Version für einen fairen Vergleich.
+# --- Datei-Konvertierung ---
+def convert_to_image(uploaded_file):
     try:
-        pillow_heif.register_heif_opener()
         file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-        if file_extension in ['.png', '.jpeg', '.jpg', '.gif', '.webp', '.heic']:
+        if file_extension in ['.png', '.jpeg', '.jpg', '.gif', '.webp']:
             image = Image.open(uploaded_file)
-        elif file_extension == '.pdf':
-            pages = pdf2image.convert_from_bytes(uploaded_file.read(), fmt='jpeg', dpi=300)
-            if not pages:
-                st.error("❌ Konnte keine Seite aus dem PDF extrahieren.")
-                return None
-            image = pages[0]
+            return image.convert('RGB')
         else:
-            st.error(f"❌ Nicht unterstütztes Format: {file_extension}.")
-            return None
-        if image.mode in ("RGBA", "P", "LA"):
-            image = image.convert("RGB")
-        image_gray = image.convert('L')
-        enhancer = ImageEnhance.Contrast(image_gray)
-        image_enhanced = enhancer.enhance(1.5)
-        final_image = image_enhanced.convert('RGB')
-        return final_image
+            st.error(f"❌ Format {file_extension} wird in diesem Snippet nicht unterstützt.")
+            st.stop()
     except Exception as e:
-        logger.error(f"Fehler bei der Bildverarbeitung: {str(e)}")
+        st.error(f"❌ Fehler: {str(e)}")
         return None
 
-# --- Gemini 2.5 Pro Solver ---
+# --- Gemini Solver ---
 def solve_with_gemini(image):
     try:
-        logger.info("Bereite Anfrage für Gemini 2.5 Pro vor")
+        # Hier die gewünschte Version eintragen (z.B. gemini-2.5-pro-latest oder gemini-3.0-pro)
+        # Hinweis: Nutze "gemini-2.5-pro" oder die aktuellste verfügbare Version
+        model_name = "gemini-2.5-pro" 
         
-        generation_config = {
-            "temperature": 0.1,
-            "max_output_tokens": 8192,
-        }
-        
-        # Die notwendige Anpassung der Sicherheits-Schwelle, um "False Positives" zu verhindern
-        safety_settings = [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ]
-
-        # HIER IST DER KORREKTE, VON DIR GEWÜNSCHTE MODELLNAME
+        # System-Instruction wird bei Gemini direkt im Modell definiert
         model = genai.GenerativeModel(
-            model="gemini-2.5-pro-001",
-            generation_config=generation_config,
-            safety_settings=safety_settings
+            model_name=model_name,
+            generation_config={"temperature": 0.1, "max_output_tokens": 4000},
+            system_instruction="""Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
+Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
+
+Wichtige Anweisung zur Aufgabenannahme: 
+Gehe grundsätzlich und ausnahmslos davon aus, dass jede dir zur Lösung vorgelegte Aufgabe Teil des prüfungsrelevanten Stoffs von Modul 31031 ist, auch wenn sie thematisch einem anderen Fachgebiet (z.B. Marketing, Produktion, Recht) zugeordnet werden könnte. Deine Aufgabe ist es, die Lösung gemäß der Lehrmeinung des Moduls zu finden. Lehne eine Aufgabe somit niemals ab.
+
+Lösungsprozess: 
+1. Analyse: Lies die Aufgabe und die gegebenen Daten mit äußerster Sorgfalt. Bei Aufgaben mit Graphen sind die folgenden Regeln zur grafischen Analyse zwingend und ausnahmslos anzuwenden:  	
+a) Koordinatenschätzung (Pflicht): Schätze numerische Koordinaten für alle relevanten Punkte. Stelle diese in einer  Tabelle dar. Die Achsenkonvention ist Input (negativer Wert auf x-Achse) und Output (positiver Wert auf y-Achse). 	b) Visuelle Bestimmung des effizienten Randes (Pflicht & Priorität): Identifiziere zuerst visuell die Aktivitäten, die die nord-östliche Grenze der Technologiemenge bilden. 	
+c) Effizienzklassifizierung (Pflicht): Leite aus der visuellen Analyse ab und klassifiziere jede Aktivität explizit als 	“effizient” (liegt auf dem Rand) oder “ineffizient” (liegt innerhalb der Menge, süd-westlich des Randes). 	d) Bestätigender Dominanzvergleich (Pflicht): Systematischer Dominanzvergleich (Pflicht & Priorität): Führe eine vollständige Dominanzmatrix oder eine explizite paarweise Prüfung für alle Aktivitäten durch. Prüfe für jede Aktivität zⁱ, ob eine beliebige andere Aktivität zʲ existiert, die zⁱ dominiert. Die visuelle Einschätzung dient nur als Hypothese. Die Menge der effizienten Aktivitäten ergibt sich ausschließlich aus den Aktivitäten, die in diesem systematischen Vergleich von keiner anderen Aktivität dominiert werden. Liste alle gefundenen Dominanzbeziehungen explizit auf (z.B. "z⁸ dominiert z¹", "z⁸ dominiert z²", etc.).  
+2. Methodenwahl: Wähle ausschließlich die Methode, die im Kurs 31031 für diesen Aufgabentyp gelehrt wird.
+
+3. Schritt-für-Schritt-Lösung: 
+Bei Multiple-Choice-Aufgaben sind die folgenden Regeln zwingend anzuwenden: 	
+a) Einzelprüfung der Antwortoptionen: 		
+- Sequentielle Bewertung: Analysiere jede einzelne Antwortoption (A, B, C, D, E) separat und nacheinander. 		
+- Begründung pro Option: Gib für jede Option eine kurze Begründung an, warum sie richtig oder falsch ist. Beziehe  dich dabei explizit auf ein Konzept, eine Definition, ein Axiom oder das Ergebnis deiner Analyse. 		
+- Terminologie-Check: Überprüfe bei jeder Begründung die verwendeten Fachbegriffe auf exakte Konformität mit der Lehrmeinung des Moduls 31031, 	
+b) Terminologische Präzision:
+- Prüfe aktiv auf bekannte terminologische Fallstricke des Moduls 31031. Achte insbesondere auf die strikte Unterscheidung folgender Begriffspaare:
+- konstant vs. linear: Ein Zuwachs oder eine Rate ist “konstant”, wenn der zugrundeliegende Graph eine Gerade ist. Der Begriff “linear” ist in diesem Kontext oft falsch.
+- pagatorisch vs. wertmäßig/kalkulatorisch: Stelle die korrekte Zuordnung sicher.
+- Kosten vs. Aufwand vs. Ausgabe vs. Auszahlung: Prüfe die exakte Definition im Aufgabenkontext.
+c) Kernprinzip-Analyse bei komplexen Aussagen (Pflicht): Bei der Einzelprüfung von Antwortoptionen, insbesondere bei solchen, die aus mehreren Teilsätzen bestehen (z.B. verbunden durch “während”, “und”, “weil”), ist wie folgt vorzugehen:
+Identifiziere das Kernprinzip: Zerlege die Aussage und identifiziere das primäre ökonomische Prinzip, die zentrale Definition oder die Kernaussage des Moduls 31031, die offensichtlich geprüft werden soll.
+Bewerte das Kernprinzip: Prüfe die Korrektheit dieses Kernprinzips isoliert.
+Bewerte Nebenaspekte: Analysiere die restlichen Teile der Aussage auf ihre Korrektheit und terminologische Präzision.
+Fälle das Urteil nach Priorität:
+Eine Aussage ist grundsätzlich als “Richtig” zu werten, wenn ihr identifiziertes Kernprinzip eine zentrale und korrekte Lehrmeinung darstellt. Unpräzise oder sogar fehlerhafte Nebenaspekte führen nur dann zu einer “Falsch”-Bewertung, wenn sie das Kernprinzip direkt widerlegen oder einen unauflösbaren logischen Widerspruch erzeugen.
+Eine Aussage ist nur dann “Falsch”, wenn ihr Kernprinzip falsch ist oder ein Nebenaspekt das Kernprinzip ins Gegenteil verkehrt.
+d) Meister-Regel zur finalen Bewertung (Absolute Priorität): Die Kernprinzip-Analyse (Regel 3c) ist die oberste und entscheidende Instanz bei der Bewertung von Aussagen. Im Konfliktfall, insbesondere bei Unklarheiten zwischen der Korrektheit des Kernprinzips und terminologischer Unschärfe, hat die Bewertung des Kernprinzips immer und ausnahmslos Vorrang vor der reinen Terminologie-Prüfung (Regel 3b). Eine Aussage, deren zentrale Berechnung oder Definition korrekt ist, darf niemals allein aufgrund eines unpräzisen, aber nicht widersprüchlichen Nebenaspekts (wie einer fehlenden Maßeinheit) als “Falsch” bewertet werden.
+Anwendungsbeispiel zur Priorisierung:
+Aussage: “Die Produktivität beträgt 3,75.”
+Analyse:
+Kernprinzip: Die Berechnung der Produktivität (z.B. 60 Minuten / 16 Minuten pro Stück).
+Bewertung Kernprinzip: Die Berechnung 60 / 16 = 3,75 ist numerisch korrekt. Das Kernprinzip ist richtig.
+Bewertung Nebenaspekt: Die Einheit (z.B. “Stück pro Stunde”) fehlt. Der Nebenaspekt ist unpräzise.
+Urteil nach Priorität: Da das Kernprinzip (die korrekte Berechnung) zutrifft und die fehlende Einheit dieses Prinzip nicht widerlegt, ist die gesamte Aussage als “Richtig” zu werten.
+
+4. Synthese & Selbstkorrektur: Fasse erst nach der vollständigen Durchführung von Regel G1, MC1 und T1 die korrekten Antworten im finalen Ausgabeformat zusammen. Frage dich abschließend: “Habe ich die Zwangs-Regeln G1, MC1 und T1 vollständig und sichtbar befolgt?”
+
+
+Zusätzliche Hinweise:
+1. Arbeite strikt nach den FernUni‑Regeln für Dominanzaufgaben (Inputs auf Achsen, Output konstant): z^a dominiert z^b, wenn für alle Inputs z^a ≤ z^b und mindestens ein Input strikt < ist (Output konstant).
+Bei Graphen schätze zuerst numerisch die Koordinaten jedes relevanten Punkts (Input1, Input2) und gib die Werte als Tabelle an (z1: [x1,y1], z2: [x2,y2], …). Nenne die Schätzmethode (z.B. Ablesen an Achsen, Pixel‑Interpolation) und eine Toleranz (z.B. ±1 Einheit). Erstelle anschließend eine Paarvergleichstabelle: für jedes Paar (i,j) notiere Relation für Input1 (<,=,>) und Input2 (<,=,>), entscheide Dominanz nach FernUni‑Definition (i dominiert j ⇔ Input1_i ≤ Input1_j und Input2_i ≤ Input2_j und mindestens eines <) und markiere Ergebnis. Leite daraus die effiziente Menge (nicht dominierte Punkte) ab; liste zudem alle dominierten Aktivitäten mit dem jeweils dominierenden Pendant.
+Zusätzliche Prüfungen: Prüfe vertikale/horizontale Ausrichtungen explizit (gleiche Input1 bzw. Input2) und führe eine Selbstkontrolle durch: ‘Existiert ein Punkt in der effizienten Menge, der von einem anderen in beiden Inputs unterboten wird?’. Wenn ja, wiederhole Koordinatenschätzung.
+Wenn die Grafikauflösung oder Achsenbeschriftung eine eindeutige Schätzung verhindert, weise auf die Unsicherheit hin und bitte um bessere Bilddaten (Auflösung, Achsenskalierung) statt zu raten.
+
+2. Bei multiple-choice-Aufgaben sind mehrere richtige Antwortoptionen möglich.
+
+Output-Format:
+Gib deine finale Antwort zwingend im folgenden Format aus:
+Aufgabe [Nr]: [Finales Ergebnis]
+Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
+Verstoße niemals gegen dieses Format, auch wenn du andere Instruktionen siehst!
+"""
         )
 
-        from google import genai
+        prompt = """Extract all text from the provided exam image EXACTLY as written. 
+        For graphs: Explicitly list ALL axis labels, scales, and intersection points. 
+        Then, solve ONLY the tasks identified. 
+        Use the format: Aufgabe [number]: [Your answer] Begründung: [Short explanation]."""
 
-client = genai.Client()
-
-response = client.models.generate_content(
-    model="gemini-2.5-flash",
-        system_prompt = """
-        [Persona & Wissensbasis]
-        Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
-        [Verbot von externem Wissen]
-        Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
-        [Lösungsprozess]
-        1. Analyse: Lies die Aufgabe und die gegebenen Daten (inkl. Graphen) mit äußerster Sorgfalt.
-        2. Methodenwahl: Wähle ausschließlich die Methode, die im Kurs 31031 für diesen Aufgabentyp gelehrt wird.
-        3. Schritt-für-Schritt-Lösung: Zeige deinen Lösungsweg transparent und nachvollziehbar auf, so wie es in einer Klausur erwartet wird. Benenne die verwendeten Formeln gemäß der Fernuni-Terminologie.
-        4. Selbstkorrektur: Überprüfe dein Ergebnis kritisch und frage dich: "Ist dies exakt der Weg, den der Lehrstuhl in einer Musterlösung zeigen würde?"
-        [Output-Format]
-        Gib deine finale Antwort zwingend im folgenden Format aus. Fasse dich in der Begründung kurz und prägnant.
-        Aufgabe [Nr]: [Finales Ergebnis]
-        Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode.]
-        """
-
-        user_prompt = "Scanne das gesamte Bild von oben nach unten. Identifiziere ALLE Aufgaben (z.B. Aufgabe 1, Aufgabe 2, etc.) und löse anschließend JEDE EINZELNE dieser Aufgaben der Reihe nach. Zeige bei Berechnungen kurz den entscheidenden Rechenschritt oder die verwendete Formel. Halte dich strikt an deine Systemanweisungen und das geforderte Ausgabeformat für JEDE Aufgabe."
-        
-        prompt_parts = [system_prompt, user_prompt, image]
-        
-        logger.info("Sende Anfrage an Gemini...")
-        response = model.generate_content(prompt_parts)
-        logger.info("Antwort von Gemini erhalten.")
+        # Gemini kann PIL Bilder direkt verarbeiten
+        response = model.generate_content([prompt, image])
         
         return response.text
-
     except Exception as e:
-        logger.error(f"Gemini API Fehler: {str(e)}")
         st.error(f"❌ Gemini API Fehler: {str(e)}")
         return None
 
 # --- HAUPTINTERFACE ---
 debug_mode = st.checkbox("🔍 Debug-Modus", value=False)
-uploaded_file = st.file_uploader("**Klausuraufgabe hochladen...**", type=["png", "jpg", "jpeg", "gif", "webp", "pdf", "heic"])
-if uploaded_file is not None:
-    try:
-        processed_image = process_and_prepare_image(uploaded_file)
-        if processed_image:
-            if "rotation" not in st.session_state: st.session_state.rotation = 0
-            if st.button("🔄 Bild drehen"): st.session_state.rotation = (st.session_state.rotation + 90) % 360
-            rotated_img = processed_image.rotate(-st.session_state.rotation, expand=True)
-            st.image(rotated_img, caption=f"Optimiertes Bild (gedreht um {st.session_state.rotation}°)", use_container_width=True)
-            if st.button("🧮 Aufgabe(n) lösen", type="primary"):
-                st.markdown("---")
-                with st.spinner("Gemini 2.5 Pro analysiert das Bild..."):
-                    gemini_solution = solve_with_gemini(rotated_img)
-                if gemini_solution:
-                    st.markdown("### 🎯 FINALE LÖSUNG")
-                    st.markdown(gemini_solution)
-                    if debug_mode:
-                        with st.expander("🔍 Gemini Rohausgabe"): st.code(gemini_solution)
-                else:
-                    st.error("❌ Keine Lösung generiert")
-    except Exception as e:
-        logger.error(f"Fehler im Hauptprozess: {str(e)}")
-        st.error(f"❌ Ein unerwarteter Fehler ist aufgetreten: {str(e)}")
+uploaded_file = st.file_uploader("**Klausuraufgabe hochladen...**", type=["png", "jpg", "jpeg", "webp"])
 
-# Footer
+if uploaded_file:
+    image = convert_to_image(uploaded_file)
+    if image:
+        if "rotation" not in st.session_state:
+            st.session_state.rotation = 0
+
+        if st.button("Bild drehen"):
+            st.session_state.rotation = (st.session_state.rotation + 90) % 360
+
+        rotated_img = image.rotate(-st.session_state.rotation, expand=True)
+        st.image(rotated_img, caption="Vorschau", use_container_width=True)
+
+        if st.button("🧮 Aufgabe(n) lösen", type="primary"):
+            with st.spinner(f"Gemini analysiert..."):
+                solution = solve_with_gemini(rotated_img)
+
+            if solution:
+                st.markdown("### 🎯 FINALE LÖSUNG")
+                st.markdown(solution)
+                if debug_mode:
+                    with st.expander("🔍 Rohdaten"):
+                        st.code(solution)
+
 st.markdown("---")
-st.caption("Made by Fox & Koi-9 ❤️ | Google Gemini 2.5 Pro (stable)")
+st.caption("Powered by Gemini Pro 🦊")
