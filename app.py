@@ -1,5 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from PIL import Image
 long_logging = __import__('logging')
 import io
