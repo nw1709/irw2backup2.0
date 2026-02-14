@@ -6,7 +6,7 @@ import io
 import os
 
 # --- UI Setup ---
-st.set_page_config(layout="centered", page_title="KFB2 Gemini Edition", page_icon="🦊")
+st.set_page_config(layout="centered", page_title="KFB3", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -14,8 +14,8 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 Koifox-Bot 2 (Gemini Edition)")
-st.write("Optimized for PhD-level Accounting Analysis 🚀")
+st.title("🦊 Koifox-Bot 3")
+st.write("Gemini 🚀")
 
 # --- API Key Validation ---
 def validate_keys():
