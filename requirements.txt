@@ -5,3 +5,4 @@ pillow-heif
 google-generativeai
 openai
 anthropic
+google-genai
