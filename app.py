@@ -6,7 +6,7 @@ import io
 import os
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB3", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
