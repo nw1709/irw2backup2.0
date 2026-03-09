@@ -98,7 +98,7 @@ Verstoße niemals gegen dieses Format!]
         image.save(img_byte_arr, format='JPEG', quality=90)
         parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
         
-        parts.append("Löse ALLE Aufgaben auf dem Blatt. Nutze die PDFs für Hintergrundwissen. Fass dich beim Output kurz (Lösung + 1 Satz Begründung).")
+        parts.append("Löse ALLE Aufgaben auf dem Bild unter strikter Einhaltung deines Lösungsprozesses.")
 
 
         response = client.models.generate_content(
@@ -108,7 +108,6 @@ Verstoße niemals gegen dieses Format!]
                 system_instruction=sys_instr,
                temperature=0.0,
         max_output_tokens=8000,
-        thinking_config=types.ThinkingConfig(include_thoughts=True),
             )
         )
 
